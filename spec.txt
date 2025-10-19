@@ -1,0 +1,175 @@
+Of course\! Here is a complete markdown file detailing the specifications for the GUI application we've built together. This document covers the purpose, features, technical details, and file structures, making it perfect for project documentation or onboarding new developers.
+
+-----
+
+# Pipetting Robot GUI: Program Specifications
+
+## 1\. Overview
+
+This document outlines the specifications for a custom graphical user interface (GUI) designed as a supplementary tool for a pipetting robot. The application serves as a user-friendly launcher for various pipetting and maintenance scripts. It is optimized for a vertical 1080p touchscreen and is intended to run as a standalone `.exe` file on a Windows machine, often launched from another fullscreen application.
+
+The core purpose is to simplify the process of selecting a protocol and configuring its key parameters (e.g., sample count, volume, start position) by providing an intuitive, touch-friendly interface that manipulates configuration `.txt` files in the background.
+
+## 2\. Core Features
+
+### 2.1. Main Menu (Script Selector)
+
+  * **Dynamic Grid Layout**: Scripts are displayed as clickable thumbnails (image + text) in a grid that automatically adjusts to the number of available scripts.
+  * **Scrolling**: The menu is scrollable to accommodate a large number of scripts.
+  * **Script Types**: The framework is designed to handle different script types (e.g., Pipetting, Maintenance), although currently they are displayed together.
+  * **Settings Access**: A persistent settings icon (⚙️) provides navigation to the application's settings panel.
+
+### 2.2. Script Detail View
+
+When a script is selected, the user is taken to a detailed configuration screen with the following components:
+
+  * **Header**: Displays the script name and a descriptive text.
+  * **Thumbnail**: Shows a larger version of the script's thumbnail image.
+  * **Sample Count Input**:
+      * A dedicated input field for specifying the number of samples (e.g., 1-96).
+      * Displays the valid range for the number of samples as defined in the script's configuration.
+      * Input is handled by a floating numeric keypad.
+  * **Interactive 96-Well Plate Visualization**:
+      * One or more `BoxGroup` widgets are displayed, each containing a graphical representation of a 96-well plate.
+      * **Color Coding**: Wells are color-coded to indicate their status:
+          * **Yellow**: Wells before the start position.
+          * **Dark Green**: The start position well.
+          * **Light Green**: Wells to be filled with samples.
+          * **Grey**: Deactivated/control wells (unselectable).
+          * **White**: Empty/available wells.
+      * **Multi-Box Logic**: If the number of samples exceeds the capacity of one plate, a second (or third) plate is automatically displayed below the first, correctly showing the continuation.
+      * **Smart Counting**: The visualization logic automatically skips over disabled wells when calculating sample placement.
+  * **Parameter Controls (Per Box Group)**:
+      * **Volume Input**: A field to specify the volume to be pipetted.
+      * **Start Position Control**: Displays the current start position and includes a button to change it.
+  * **Fullscreen Start Position Editor**: Pressing "Endre startposisjon" opens a fullscreen, scalable view of the 96-well plate where the user can select a new start position by touch. Disabled wells are clearly marked and unselectable. The view returns automatically after a 1-second delay.
+  * **User-Defined Variables**: Displays custom questions with multiple-choice radio buttons, as defined in the script's configuration.
+  * **START PIPETTERING Button**: The main action button at the bottom of the screen. It is disabled until a valid sample count is entered and confirmed.
+
+### 2.3. Floating Numeric Keypad
+
+  * A custom keypad widget appears when an input field (Sample Count, Volume) is pressed.
+  * It is intelligently positioned next to the active input field.
+  * Includes numbers 0-9, a "Slett" (delete) button, and an "Enter" button.
+  * The "Enter" button confirms the value, updates the UI, and hides the keypad.
+
+### 2.4. Settings & Script Management
+
+Accessed via the main menu, this screen provides administrative functions:
+
+  * **Script Activation**: A list of all found scripts is displayed, each with a checkbox to activate or deactivate its visibility on the main menu.
+  * **Edit Script**: An "Endre" button for each script opens the Script Generator with all of that script's data pre-filled for easy editing.
+  * **Delete Script**: A "Slett" button for each script, which asks for confirmation before permanently deleting the script's folder and configuration file.
+  * **Create Script**: A button to launch the Script Generator for creating a new script from scratch.
+  * **External Script Execution**: A "Rydd i scripts" button that runs a predefined VBScript (`rydd.vbs`) in a non-blocking manner.
+
+### 2.5. Script Generator
+
+A comprehensive form for creating and editing scripts. It allows configuration of:
+
+  * **General Info**: Script Name, Description, Thumbnail filename, Robot-specific `targetValue`.
+  * **File Paths**: Full paths for all output `.txt` files and the `.png` visualization file.
+  * **Sample Range**: Minimum and maximum allowed sample count.
+  * **Dynamic Box Groups**: Users can add or remove `Box Groups` using `+` and `-` buttons. Each group has its own settings for:
+      * Group Name
+      * Well Shape (circle/rect)
+      * Max number of physical boxes
+      * Initial Start Position
+      * Disabled Wells (as a comma-separated list)
+      * Default Volume
+  * **Dynamic User-Defined Variables**: Users can add or remove custom variables. Each variable consists of:
+      * A question/prompt.
+      * A dynamic list of options, where each option has a Label, an output Value, and an output File Path.
+
+### 2.6. File I/O
+
+  * **Output on Start**: When "START PIPETTERING" is pressed, the application writes the final configured values to the `.txt` files specified in the script's `config.json`.
+  * **Input on Load**: The application reads the last used start position from the relevant `.txt` file when a script is loaded, providing continuity between runs.
+  * **Visualization**: A `.png` image of the entire script configuration view (excluding the "START" button) is saved to the location specified in the `config.json`. This file is overwritten on each run.
+
+## 3\. Technical Specifications
+
+  * **Language**: Python 3
+  * **GUI Library**: PySide6 (The official Qt for Python project)
+  * **Configuration**:
+      * **Application Settings**: `settings.json` (stores inactive scripts).
+      * **Script Definitions**: One `config.json` file per script, located in its own sub-folder.
+  * **File Structure**:
+    ```
+    pipette_gui/
+    ├── main.py                 # Main application entry point
+    ├── gui_widgets.py          # Custom widgets (WellPlateWidget, Keypad, etc.)
+    ├── gui_screens.py          # All screen classes (Selector, Detail, Settings, etc.)
+    ├── settings.json           # Stores app-wide settings like inactive scripts
+    ├── rydd.vbs                # Example external script
+    └── scripts/
+        ├── script_a/
+        │   ├── config.json
+        │   └── thumbnail.png
+        └── script_b/
+            ├── config.json
+            └── thumbnail.png
+    ```
+
+## 4\. `config.json` Specification
+
+Below is an example of a fully-featured `config.json` file with explanations for each key.
+
+```json
+{
+    "scriptName": "DNA Ekstraksjon (Full)",
+    "description": "Dette er en lang og detaljert beskrivelse av hva dette scriptet gjør, hvilke reagenser som trengs, og eventuelle forholdsregler.",
+    "thumbnail": "dna_icon.png",
+    "visualizationFile": "C:/robot_output/layouts/dna_layout.png",
+    "targetFile": "C:/robot_scripts/selected_script.txt",
+    "targetValue": "DNA_EXTRACTION_V4",
+    "sampleCountFile": "C:/robot_scripts/variables/sample_count.txt",
+    "sampleRange": {
+        "min": 1,
+        "max": 84
+    },
+    "boxGroups": [
+        {
+            "groupName": "Arbeidsboks",
+            "shape": "circle",
+            "maxBoxes": 3,
+            "startPositionFile": "C:/robot_scripts/variables/work_box_start.txt",
+            "initialStartPosition": 1,
+            "disabledWells": [12, 24, 36, 48, 60, 72, 84, 96],
+            "volume": {
+                "volumeFile": "C:/robot_scripts/variables/work_volume.txt",
+                "defaultValue": 500
+            }
+        },
+        {
+            "groupName": "Biobank",
+            "shape": "rect",
+            "maxBoxes": 2,
+            "startPositionFile": "C:/robot_scripts/variables/biobank_start.txt",
+            "initialStartPosition": 1,
+            "disabledWells": [],
+            "volume": {
+                "volumeFile": "C:/robot_scripts/variables/biobank_volume.txt",
+                "defaultValue": 250
+            }
+        }
+    ],
+    "userDefinedVariables": [
+        {
+            "question": "Hvilken rørtype benyttes?",
+            "options": [
+                {
+                    "label": "Store rør (5ml)",
+                    "value": "LargeTubeProtocol",
+                    "file": "C:/robot_scripts/variables/tube_type.txt"
+                },
+                {
+                    "label": "Små rør (2ml)",
+                    "value": "SmallTubeProtocol",
+                    "file": "C:/robot_scripts/variables/tube_type.txt"
+                }
+            ]
+        }
+    ]
+}
+```
