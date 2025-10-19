@@ -1,0 +1,1 @@
+MsgBox "Dette er en test av 'Rydd i scripts'!", 0, "Script Kjørt"
