@@ -13,7 +13,7 @@
     "boxGroups": [
         {
             "groupName": "Biobankboks",
-            "shape": "rect",
+            "shape": "circle",
             "maxBoxes": 3,
             "startPositionFile": "C:/robot/variables/OK_sau/biobankboks_start_pos.txt",
             "initialStartPosition": 1,
@@ -23,11 +23,16 @@
                 "defaultValue": 950,
                 "min": 0,
                 "max": 5000
+            },
+            "visualization": {
+                "outlineColor": false,
+                "outlineWidth": 3,
+                "plateColor": false
             }
         },
         {
             "groupName": "Arbeidsboks",
-            "shape": "circle",
+            "shape": "rect",
             "maxBoxes": 3,
             "startPositionFile": "C:/robot/variables/OK_sau/arbeidsboks_start_pos.txt",
             "initialStartPosition": 7,
@@ -46,6 +51,11 @@
                 "defaultValue": 500,
                 "min": 0,
                 "max": 5000
+            },
+            "visualization": {
+                "outlineColor": false,
+                "outlineWidth": 3,
+                "plateColor": false
             }
         }
     ],
