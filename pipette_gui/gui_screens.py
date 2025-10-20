@@ -15,6 +15,7 @@ from PySide6.QtGui import QFont, QIntValidator, QPixmap, QPainter, QColor
 from PySide6.QtWidgets import QApplication
 
 from gui_widgets import WellPlateWidget, NumericKeypad, ThumbnailButton
+from custom_widgets import NumericDisplay
 
 class ScriptSelectorScreen(QWidget):
     script_selected = Signal(dict); settings_clicked = Signal()
@@ -79,9 +80,7 @@ class BoxGroupWidget(QFrame):
         volume_layout = QHBoxLayout()
         volume_label = QLabel("Volum (µL):")
         volume_label.setFont(QFont("Arial", 20))
-        self.volume_display = QPushButton()
-        self.volume_display.setFont(QFont("Arial", 20, QFont.Bold))
-        self.volume_display.setMinimumWidth(120)
+        self.volume_display = NumericDisplay()
         volume_layout.addWidget(volume_label)
         volume_layout.addWidget(self.volume_display)
         volume_layout.addStretch(1)
@@ -155,7 +154,15 @@ class BoxGroupWidget(QFrame):
 class ScriptDetailScreen(QWidget):
     back_to_menu = Signal(); edit_plate_fullscreen = Signal(object)
     def __init__(self, base_dir, parent=None):
-        super().__init__(parent); self.base_dir = base_dir; self.box_group_widgets = []; self.active_group_for_editing = None; self.udf_widgets = []; self._setup_ui(QVBoxLayout(self)); self._connect_signals()
+        super().__init__(parent)
+        self.base_dir = base_dir
+        self.box_group_widgets = []
+        self.active_group_for_editing = None
+        self.active_input_display = None
+        self.udf_widgets = []
+        self.temp_sample_input = "0"  # Store temporary value until confirmed
+        self._setup_ui(QVBoxLayout(self))
+        self._connect_signals()
     def load_script_data(self, script_data):
         self.keypad.hide(); self.script_data = script_data
         while self.groups_layout.count():
@@ -192,49 +199,174 @@ class ScriptDetailScreen(QWidget):
         self._update_all_plates()
     def _setup_ui(self, main_layout):
         self.main_layout = main_layout; main_layout.setContentsMargins(0,0,0,0); scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); scroll_area.setStyleSheet("QScrollArea { border: none; }"); self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 20)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); self.script_name_label = QLabel("Script Navn"); self.script_name_label.setFont(QFont("Arial", 32, QFont.Bold)); self.script_name_label.setAlignment(Qt.AlignCenter); self.thumbnail_label = QLabel(); self.thumbnail_label.setFixedSize(225, 150); self.thumbnail_label.setScaledContents(True); self.thumbnail_label.setAlignment(Qt.AlignCenter); self.thumbnail_label.setStyleSheet("border: 1px solid #ccc;"); self.description_label = QLabel("Beskrivelse her..."); self.description_label.setFont(QFont("Arial", 16)); self.description_label.setWordWrap(True); info_vbox = QVBoxLayout(); info_vbox.addWidget(self.description_label); info_vbox.addStretch(1); info_layout.addWidget(self.thumbnail_label); info_layout.addLayout(info_vbox); self.sample_range_label = QLabel("Gyldig antall: 1 - 96"); self.sample_range_label.setFont(QFont("Arial", 14, italic=True)); 
-        samples_layout = QHBoxLayout(); samples_label = QLabel("Antall prøver:"); samples_label.setFont(QFont("Arial", 24)); self.samples_display = QPushButton("0"); self.samples_display.setFont(QFont("Arial", 24, QFont.Bold)); self.samples_display.setMinimumWidth(120);
+        samples_layout = QHBoxLayout()
+        samples_label = QLabel("Antall prøver:")
+        samples_label.setFont(QFont("Arial", 24))
+        self.samples_display = NumericDisplay()
+        self.samples_display.setText("0")
         samples_layout.addWidget(samples_label); samples_layout.addWidget(self.samples_display); samples_layout.addStretch(1); 
         self.udf_main_layout = QVBoxLayout(); self.groups_container = QWidget(); self.groups_layout = QHBoxLayout(self.groups_container); self.start_button = QPushButton("START PIPETTERING"); self.start_button.setMinimumHeight(150); self.start_button.setFont(QFont("Arial", 40, QFont.Bold)); self.start_button.setStyleSheet("""QPushButton {background-color: #0078d4; color: white;} QPushButton:disabled {background-color: #5a5a5a; color: #999999;}"""); self.keypad = NumericKeypad(self); self.keypad.setFixedSize(450, 520); self.keypad.hide(); content_layout.addLayout(top_bar_layout); content_layout.addWidget(self.script_name_label); content_layout.addLayout(info_layout); content_layout.addLayout(samples_layout); content_layout.addWidget(self.sample_range_label); content_layout.addLayout(self.udf_main_layout); content_layout.addWidget(self.groups_container); content_layout.addStretch(1); main_layout.addWidget(scroll_area, 1); main_layout.addWidget(self.start_button)
     def _connect_signals(self):
         self.back_button.clicked.connect(self.back_to_menu.emit); self.keypad.enter_pressed.connect(self._confirm_input); self.keypad.key_pressed.connect(self._on_key_pressed); self.samples_display.clicked.connect(lambda: self._set_active_input(self.samples_display)); self.start_button.clicked.connect(self._on_start_pipetting)
     def _confirm_input(self):
-        if self.active_input_display == self.samples_display: self._update_all_plates()
-        else: self._hide_keypad()
+        if not self.active_input_display:
+            return
+            
+        # Update based on the type of input
+        if self.active_input_display == self.samples_display:
+            # Update the actual sample count and refresh plates
+            self.samples_input = self.temp_sample_input
+            self._update_all_plates()
+        else:
+            # For volume inputs, the update is already done in _on_key_pressed
+            pass
+            
+        # Hide keypad and clear focus
+        self._hide_keypad()
     def _hide_keypad(self):
-        self.keypad.hide(); self._set_active_input(None)
+        # Reset to default style for all input fields
+        default_style = """
+            QLineEdit {
+                background-color: white;
+                border: 3px solid #404040;
+                border-radius: 8px;
+                padding: 8px;
+                color: #000000;
+                font-family: Arial;
+                font-size: 28pt;
+                font-weight: bold;
+            }
+        """
+        self.samples_display.setStyleSheet(default_style)
+        for group in self.box_group_widgets:
+            if hasattr(group, 'volume_display'):
+                group.volume_display.setStyleSheet(default_style)
+        
+        # Hide keypad and reset active input
+        self.keypad.hide()
+        self.active_input_display = None
     def finalize_new_start_pos(self, well_index):
         if self.active_group_for_editing:
             group = self.active_group_for_editing; group.group_data['currentStartPosition'] = well_index; group.update_displays(); self._update_all_plates(); self.active_group_for_editing = None
     def _on_change_start_pos_clicked(self, group_widget):
         self._hide_keypad(); self.start_button.setEnabled(False); self.active_group_for_editing = group_widget; self.edit_plate_fullscreen.emit(group_widget)
     def _set_active_input(self, display_widget):
-        self.samples_display.setStyleSheet("");
-        for group in self.box_group_widgets: group.volume_display.setStyleSheet("")
-        self.active_input_display = display_widget;
-        if self.active_input_display:
-            self.active_input_display.setStyleSheet("background-color: #aadeff;"); global_pos = self.active_input_display.mapToGlobal(QPoint(0, self.active_input_display.height())); local_pos = self.mapFromGlobal(global_pos); self.keypad.move(local_pos.x(), local_pos.y() + 5); self.keypad.show(); self.keypad.raise_()
+        # If clicking outside input areas, hide keypad and clear styles
+        if display_widget is None:
+            self._hide_keypad()
+            return
+            
+        # Reset to default style
+        default_style = """
+            QLineEdit {
+                background-color: white;
+                border: 3px solid #404040;
+                border-radius: 8px;
+                padding: 8px;
+                color: #000000;
+                font-family: Arial;
+                font-size: 28pt;
+                font-weight: bold;
+            }
+        """
+        self.samples_display.setStyleSheet(default_style)
+        for group in self.box_group_widgets:
+            group.volume_display.setStyleSheet(default_style)
+            
+        # If clicking the same input, just reselect text
+        if display_widget == self.active_input_display:
+            if hasattr(display_widget, 'selectAll'):
+                display_widget.selectAll()
+            return
+            
+        # Set new active input
+        self.active_input_display = display_widget
+        
+        # Highlight and focus with darker blue
+        self.active_input_display.setStyleSheet("""
+            QLineEdit {
+                background-color: #005a9e;
+                border: 3px solid #004578;
+                border-radius: 8px;
+                padding: 8px;
+                color: white;
+                font-family: Arial;
+                font-size: 28pt;
+                font-weight: bold;
+            }
+        """)
+        self.active_input_display.setFocus()
+        
+        # Select all text
+        if hasattr(self.active_input_display, 'selectAll'):
+            self.active_input_display.selectAll()
+        
+        # Show and position keypad
+        global_pos = self.active_input_display.mapToGlobal(QPoint(0, self.active_input_display.height()))
+        local_pos = self.mapFromGlobal(global_pos)
+        self.keypad.move(local_pos.x(), local_pos.y() + 5)
+        self.keypad.show()
+        self.keypad.raise_()
     def _on_volume_display_clicked(self, group_widget):
         self.active_group_for_editing = group_widget; self._set_active_input(group_widget.volume_display)
     def _on_key_pressed(self, key):
-        if not self.active_input_display: return
+        if not self.active_input_display:
+            return
+        
+        # Get current text
         if self.active_input_display == self.samples_display:
-            current_str = self.samples_input
-            if key == 'del': current_str = current_str[:-1]
-            elif len(current_str) < 3: current_str += key
-            self.samples_input = current_str; self.active_input_display.setText(current_str or "0")
+            current_str = self.temp_sample_input
         else:
             current_str = self.active_input_display.text()
-            if key == 'del': current_str = current_str[:-1]
-            elif len(str(current_str)) < 4: current_str += key
+        current_str = str(current_str) if current_str else "0"
+        
+        # Handle key input
+        if key == 'del':
+            # Delete last character
+            current_str = current_str[:-1] if current_str else "0"
+        else:
+            max_length = 3 if self.active_input_display == self.samples_display else 4
+            # If the field is focused and all text is selected, replace it
+            if hasattr(self.active_input_display, 'hasSelectedText') and self.active_input_display.hasSelectedText():
+                current_str = key
+            # Otherwise append if under length limit
+            elif len(current_str) < max_length:
+                if current_str == "0":  # Replace leading zero
+                    current_str = key
+                else:
+                        current_str += key
+        
+        # Validate and update display
+        if self.active_input_display == self.samples_display:
+            # Validate sample count (1-96)
+            value = int(current_str) if current_str else 0
+            if value > 96:
+                current_str = "96"
+            # Store in temp variable but don't update plates yet
+            self.temp_sample_input = current_str
+            self.active_input_display.setText(current_str)
+        
+        # Update the display
+        if self.active_input_display == self.samples_display:
+            self.samples_input = current_str
+            self.active_input_display.setText(current_str or "0")
+            self._update_all_plates()
+        else:
+            self.active_input_display.setText(current_str or "0")
             if self.active_group_for_editing:
                 self.active_group_for_editing.group_data['volume']['defaultValue'] = int(current_str or "0")
             self.active_input_display.setText(str(current_str or "0"))
     def _update_all_plates(self):
-        self._hide_keypad()
         try:
-            num_samples = int(self.samples_input or "0"); sample_range = self.script_data.get("sampleRange", {}); min_s, max_s = sample_range.get("min", 1), sample_range.get("max", 96)
+            # Update the actual sample input from temporary storage
+            self.samples_input = self.temp_sample_input
+            num_samples = int(self.samples_input or "0")
+            sample_range = self.script_data.get("sampleRange", {})
+            min_s, max_s = sample_range.get("min", 1), sample_range.get("max", 96)
+            
             if num_samples != 0 and not (min_s <= num_samples <= max_s):
-                QMessageBox.warning(self, "Ugyldig antall", f"Antall prøver må være mellom {min_s} og {max_s}."); return
+                QMessageBox.warning(self, "Ugyldig antall", f"Antall prøver må være mellom {min_s} og {max_s}.")
+                return
             for group in self.box_group_widgets:
                 start_pos = group.group_data.get('currentStartPosition', 1); disabled = group.group_data.get('disabledWells', []); group.update_plates(num_samples, start_pos, disabled)
             self.start_button.setEnabled(num_samples > 0)

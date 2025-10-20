@@ -39,7 +39,13 @@ class WellPlateWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if self.show_title:
-            painter.setFont(QFont("Arial", 20, QFont.Bold)); painter.setPen(QColor("#0078d4")); coord_text = self.index_to_coord(self.start_pos); display_text = f"Startposisjon: {coord_text}"; painter.drawText(self.rect().adjusted(0, 5, 0, 0), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, display_text)
+            painter.setFont(QFont("Arial", 24, QFont.Bold))
+            painter.setPen(QColor("#0078d4"))
+            coord_text = self.index_to_coord(self.start_pos)
+            display_text = f"Startposisjon: {coord_text}"
+            bg_rect = self.rect().adjusted(20, 5, -20, -self.height() + 40)
+            painter.fillRect(bg_rect, QColor("#f0f9ff"))
+            painter.drawText(bg_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, display_text)
         if self.is_interactive:
             pen = QPen(QColor("#0078d4"), 4); pen.setStyle(Qt.PenStyle.SolidLine)
             painter.setPen(pen); painter.drawRect(self.rect().adjusted(2, 2, -2, -2))
@@ -52,16 +58,21 @@ class WellPlateWidget(QWidget):
             while count < self.sample_count and current_pos <= 96:
                 if current_pos not in self.disabled_wells: active_sample_wells.add(current_pos); count += 1
                 current_pos += 1
-        small_font = QFont("Arial", 10)
+        small_font = QFont("Arial", 11, QFont.Bold)
         for row in range(self.rows):
             for col in range(self.cols):
                 well_index_1_based = (col * self.rows) + row + 1; color_outline = QColor("#000000"); color_fill = QColor("#FFFFFF")
-                if well_index_1_based in self.disabled_wells: color_fill = QColor("#a0a0a0")
+                if well_index_1_based in self.disabled_wells:
+                    color_fill = QColor("#e0e0e0")  # Lighter gray for better contrast
                 elif well_index_1_based in active_sample_wells:
-                    if well_index_1_based == actual_start_pos: color_fill = QColor("#009933")
-                    else: color_fill = QColor("#99ff99")
-                elif well_index_1_based < self.start_pos: color_fill = QColor("#ffff99")
-                if self.is_interactive and well_index_1_based == self.temp_selected_well: color_fill = QColor("#3399ff")
+                    if well_index_1_based == actual_start_pos:
+                        color_fill = QColor("#00b347")  # Deeper green for start position
+                    else:
+                        color_fill = QColor("#80dda8")  # Softer green for active samples
+                elif well_index_1_based < self.start_pos:
+                    color_fill = QColor("#ffd700")  # More saturated yellow for better visibility
+                if self.is_interactive and well_index_1_based == self.temp_selected_well:
+                    color_fill = QColor("#0078d4")  # Match the app's accent color
                 rect = QRect(20 + col * cell_width, top_margin + row * cell_height, cell_width - 2, cell_height - 2)
                 painter.setPen(QPen(color_outline, 2)); painter.setBrush(QBrush(color_fill))
                 if self.shape == 'circle': painter.drawEllipse(rect)
@@ -83,15 +94,16 @@ class WellPlateWidget(QWidget):
 
 class NumericKeypad(QWidget):
     key_pressed = Signal(str)
-    # FIKS: Endret signalnavn for klarhet
     enter_pressed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        
         layout = QGridLayout(self)
         layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
         
-        # FIKS: Oppdatert layout for knapper
         buttons = {
             '7': (0, 0), '8': (0, 1), '9': (0, 2),
             '4': (1, 0), '5': (1, 1), '6': (1, 2),
@@ -102,7 +114,45 @@ class NumericKeypad(QWidget):
         for text, pos in buttons.items():
             button = QPushButton(text)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            button.setFont(QFont("Arial", 30))
+            button.setMinimumHeight(80)  # Ensure good touch target size
+            button.setFont(QFont("Arial", 32, QFont.Bold))
+            
+            # Special styling for Enter and Delete buttons
+            special_style = ""
+            if text == "Enter":
+                special_style = """
+                    background-color: #0078d4 !important;
+                    color: white !important;
+                    border-color: #005a9e !important;
+                """
+            elif text == "Slett":
+                special_style = """
+                    background-color: #d83b01 !important;
+                    color: white !important;
+                    border-color: #a62f00 !important;
+                """
+                
+            button.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: white;
+                    border: 3px solid #404040;
+                    border-radius: 8px;
+                    padding: 12px;
+                    color: #000000;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background-color: #f0f9ff;
+                    border-color: #0078d4;
+                    color: #0078d4;
+                }}
+                QPushButton:pressed {{
+                    background-color: #0078d4;
+                    border-color: #005a9e;
+                    color: white;
+                }}
+                {special_style}
+            """)
             button.clicked.connect(self._on_button_click)
             layout.addWidget(button, pos[0], pos[1])
             
@@ -110,10 +160,10 @@ class NumericKeypad(QWidget):
         button = self.sender()
         key = button.text()
         
-        # FIKS: Logikk for Enter-knappen
         if key == "Slett":
             self.key_pressed.emit("del")
         elif key == "Enter":
             self.enter_pressed.emit()
         else:
             self.key_pressed.emit(key)
+            # Let the parent handle selection reset

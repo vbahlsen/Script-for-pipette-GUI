@@ -1,0 +1,70 @@
+1. Minor function improvements
+1.1 In a running script: 
+when an input field is selected the current numbers are marked in such a manner that new inputs
+overwrite it. This removes the need for clearing this out manually. This applies to any input fields
+in a running script, such as number of samples and volume. 
+
+2. Styling improvements
+2.1 General styling across all views. 
+If possible with PySide6, I'd like the general styling to be a bit different. 
+There should be clear outlines to any clickable fields. Text should obviously be contrasting with
+their backgrounds, this is the issue for text/numbers in input fields too obiously. Try to use
+similar fonts/styles/colours, and make distinguishments in font sizes and boldness when needed.
+
+2.2 Styling of the 96 well box presentation.
+We would benefit from the 96 well boxes looking more realistic, and there should be the option in the
+generator to change their colours (not of the wells, only of the outlines and such).
+This would mean a slightly more substantial outline around the wells and a fill colour, for example.
+Figure out how these boxes look from above for inspiration. 
+
+3. New functionality
+3.1 Another script class
+We're in need of another type of script, and a generator for it. 
+The major difference for this script compared to the current script type we have implemented, is that
+this script creates pooled samples in some box-groups and invividual samples in a other box-groups,
+depending on the spec. Each journal case is X number of induvidually pipetted samples that will also
+be pooled to a single well in the pooled box-group.
+The script would read a .txt or .csv file (make it accept both) journal system export to 
+determine the number of samples in total which will be presented (in same fashion/position as 
+standard script) but NOT changable in the script screen. The file will consist of one column
+without a header. The structure of this file will me something like:
+
+1
+1
+2
+2
+3
+3
+3
+3
+3
+
+In this file, 1, 2, 3 represents different journal cases, and the number they're repeated is the
+number of samples from the system, INCLUDING the pooled sample which we generate in the upcoming
+pipetting process. This means the number of samples we're putting into the machine is 1 less
+for each journal case than presented in the file. Case 1 has 1 sample, case 2 has 1 sample, case 
+3 has 4 samples, etc. In reality, the rows are containing differing repetitions of text/number values, 
+not neccesarily just integers. So the function deciphering this needs to be robust. 
+
+So differences and new functions for the script screen: 
+-The script reads a .csv or .txt file in the directory specified in config. If there's more than 1
+.csv and/or .txt file in the directory, the script doesn't start but rather warns us 
+"Flere lister i DIRECTORY, rydd opp i disse og prøv igjen" (replace DIRECTORY with the directory). 
+The warning can be crossed out, or dissapears after 10 seconds.
+-Number of samples not an input, only a display of the value calculated from the file. 
+-Number of journal cases/pooled samples displayed below number of samples ("Antall sampleprøver")
+-Start and stop value from the journal system export file (first and last value) displayed below 
+these. Example: "Saker: "2025-06-K1999" til "2025-06-K2005""
+-Box-groups with pooled samples would have the pooled samples added, which would in most cases be
+fewer and in all cases be the same as number of unique journal cases. So we have two different 
+sample counts being added to their respective start positions and visualisations. 
+
+The generator would be quite identical with our standard script, except we have a checkbox for 
+pooled samples, "Samleprøve-boks", in the box-group specification part of the generator. We also
+need to specify our directory for the journal system export (folder, not file). Early in the spec.
+
+3.2 Post script presentation
+TO BE SPECIFIED FURTHER. 
+We're going to add a new post pipetting quality assurance visualisation, which makes graphical
+presentations of clot errors by looking at the pipetting programs log file. 
+ 
