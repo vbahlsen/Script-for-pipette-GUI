@@ -17,11 +17,18 @@ class ThumbnailButton(QWidget):
         self.clicked.emit(); super().mousePressEvent(event)
 
 class WellPlateWidget(QWidget):
-    # ... (Denne klassen er uendret)
     well_clicked = Signal(int)
     def __init__(self, shape='rect', fixed_size=True, show_title=True, parent=None):
         super().__init__(parent)
-        self.rows = 8; self.cols = 12; self.start_pos = 1; self.sample_count = 0; self.disabled_wells = []; self.shape = shape; self.is_interactive = False; self.temp_selected_well = None
+        self.rows = 8
+        self.cols = 12
+        self.start_pos = 1
+        self.sample_count = 0
+        self.disabled_wells = []
+        self.shape = shape
+        self.is_interactive = False
+        self.temp_selected_well = None
+        self.frame_color = "#808080"  # Default gray
         self.row_map = {i: chr(ord('A') + i) for i in range(self.rows)}
         self.show_title = show_title
         if fixed_size:
@@ -30,14 +37,32 @@ class WellPlateWidget(QWidget):
         if not 1 <= index <= 96: return "?"
         row = (index - 1) % 8; col = (index - 1) // 8
         return f"{chr(ord('A') + row)}{col + 1}"
-    def set_state(self, start_pos, sample_count, disabled_wells):
-        self.start_pos = start_pos; self.sample_count = sample_count; self.disabled_wells = disabled_wells; self.update()
+    def set_state(self, start_pos, sample_count, disabled_wells, frame_color=None):
+        self.start_pos = start_pos
+        self.sample_count = sample_count
+        self.disabled_wells = disabled_wells
+        if frame_color:
+            self.frame_color = frame_color
+        self.update()
     def set_interactive(self, interactive):
         self.is_interactive = interactive
         if not interactive: self.temp_selected_well = None
         self.update()
     def paintEvent(self, event):
-        painter = QPainter(self); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Draw the plate frame
+        frame_rect = self.rect().adjusted(10, 45, -10, -10)  # Adjust for margins
+        frame_color = QColor(self.frame_color)
+        
+        # Draw the filled frame background
+        painter.fillRect(frame_rect, frame_color.lighter(130))  # Lighter background
+        
+        # Draw frame border
+        painter.setPen(QPen(frame_color, 3))  # Darker border
+        painter.drawRect(frame_rect)
+        
         if self.show_title:
             painter.setFont(QFont("Arial", 24, QFont.Bold))
             painter.setPen(QColor("#0078d4"))

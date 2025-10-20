@@ -106,18 +106,29 @@ class BoxGroupWidget(QFrame):
             plate.update()
 
     def update_plates(self, sample_count, start_pos, disabled_wells):
-        while self.plates_layout.count():
-            child = self.plates_layout.takeAt(0)
-            if child.widget(): child.widget().deleteLater()
-        self.plate_widgets.clear()
+        try:
+            # Clear existing plates
+            while self.plates_layout.count():
+                child = self.plates_layout.takeAt(0)
+                if child.widget(): 
+                    child.widget().deleteLater()
+            self.plate_widgets.clear()
 
-        show_title_on_first_plate = True
-        
-        if sample_count <= 0:
-            plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), show_title=show_title_on_first_plate)
-            plate.set_state(start_pos=start_pos, sample_count=0, disabled_wells=disabled_wells)
-            self.plates_layout.addWidget(plate)
-            self.plate_widgets.append(plate)
+            show_title_on_first_plate = True
+            
+            if sample_count <= 0:
+                plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), show_title=show_title)
+                # Handle missing color field gracefully
+                if "color" in self.group_data:
+                    frame_color = self.group_data["color"]
+                else:
+                    frame_color = "#808080"  # Default gray for older configs
+                plate.set_state(start_pos=start_pos, sample_count=0, disabled_wells=disabled_wells, frame_color=frame_color)
+                self.plates_layout.addWidget(plate)
+                self.plate_widgets.append(plate)
+                return
+        except Exception as e:
+            print(f"Error updating plates: {e}")
             return
 
         samples_to_distribute = sample_count
@@ -138,7 +149,23 @@ class BoxGroupWidget(QFrame):
             
             samples_on_this_plate = min(samples_to_distribute, available_wells_on_this_plate)
             
-            plate.set_state(start_pos=current_pos_on_plate, sample_count=samples_on_this_plate, disabled_wells=disabled_wells)
+            try:
+                # Handle missing color field gracefully
+                if "color" in self.group_data:
+                    frame_color = self.group_data["color"]
+                else:
+                    frame_color = "#808080"  # Default gray for older configs
+                    
+                plate.set_state(start_pos=current_pos_on_plate, 
+                              sample_count=samples_on_this_plate, 
+                              disabled_wells=disabled_wells,
+                              frame_color=frame_color)
+            except Exception as e:
+                print(f"Error setting plate state: {e}")
+                # Fallback to basic state without color
+                plate.set_state(start_pos=current_pos_on_plate, 
+                              sample_count=samples_on_this_plate, 
+                              disabled_wells=disabled_wells)
             self.plates_layout.addWidget(plate)
             self.plate_widgets.append(plate)
 
@@ -433,15 +460,102 @@ class SettingsScreen(QWidget):
 class BoxGroupForm(QFrame):
     remove_me = Signal(object)
     def __init__(self, parent=None):
-        super().__init__(parent); self.setFrameShape(QFrame.Shape.StyledPanel); layout = QFormLayout(self); font = QFont("Arial", 14); self.group_name_input = QLineEdit(); self.shape_input = QComboBox(); self.shape_input.addItems(["circle", "rect"]); self.max_boxes_input = QLineEdit("1"); self.start_pos_input = QLineEdit("1"); self.disabled_wells_input = QLineEdit(); self.vol_default_input = QLineEdit("500"); self.start_pos_file_input = QLineEdit(); self.volume_file_input = QLineEdit(); remove_button = QPushButton("X Fjern"); remove_button.setStyleSheet("color: red;"); remove_button.clicked.connect(lambda: self.remove_me.emit(self))
-        for w in [self.group_name_input, self.shape_input, self.max_boxes_input, self.start_pos_input, self.disabled_wells_input, self.vol_default_input, self.start_pos_file_input, self.volume_file_input, remove_button]: w.setFont(font)
-        layout.addRow(remove_button); layout.addRow("Gruppenavn:", self.group_name_input); layout.addRow("Brønnform:", self.shape_input); layout.addRow("Maks antall bokser:", self.max_boxes_input); layout.addRow("Initiell startposisjon:", self.start_pos_input); layout.addRow("Deaktiverte brønner:", self.disabled_wells_input); layout.addRow("Standard volum (µL):", self.vol_default_input); layout.addRow("Fil for startposisjon:", self.start_pos_file_input); layout.addRow("Fil for volum:", self.volume_file_input)
+        super().__init__(parent)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        layout = QFormLayout(self)
+        font = QFont("Arial", 14)
+        
+        # Initialize all input fields
+        self.group_name_input = QLineEdit()
+        self.shape_input = QComboBox()
+        self.shape_input.addItems(["circle", "rect"])
+        self.max_boxes_input = QLineEdit("1")
+        self.start_pos_input = QLineEdit("1")
+        self.disabled_wells_input = QLineEdit()
+        self.vol_default_input = QLineEdit("500")
+        self.start_pos_file_input = QLineEdit()
+        self.volume_file_input = QLineEdit()
+        self.color_input = QComboBox()
+        
+        # Add standard colors with friendly names
+        self.color_options = {
+            "Grå": "#808080",
+            "Hvit": "#FFFFFF",
+            "Svart": "#000000",
+            "Rød": "#FF0000",
+            "Oransje": "#FFA500",
+            "Gul": "#FFD700",
+            "Grønn": "#008000",
+            "Blå": "#0000FF",
+            "Indigo": "#4B0082",
+            "Fiolett": "#8A2BE2",
+            "Rosa": "#FF69B4",
+            "Brun": "#8B4513"
+        }
+        
+        self.color_input.addItems(self.color_options.keys())
+        self.color_input.setCurrentText("Grå")  # Default color
+        
+        remove_button = QPushButton("X Fjern")
+        remove_button.setStyleSheet("color: red;")
+        remove_button.clicked.connect(lambda: self.remove_me.emit(self))
+        # Set font for all widgets
+        for w in [self.group_name_input, self.shape_input, self.max_boxes_input, 
+                 self.start_pos_input, self.disabled_wells_input, self.vol_default_input, 
+                 self.start_pos_file_input, self.volume_file_input, self.color_input, remove_button]:
+            w.setFont(font)
+            
+        # Add rows to form
+        layout.addRow(remove_button)
+        layout.addRow("Gruppenavn:", self.group_name_input)
+        layout.addRow("Brønnform:", self.shape_input)
+        layout.addRow("Boksens farge:", self.color_input)  # New color selector
+        layout.addRow("Maks antall bokser:", self.max_boxes_input)
+        layout.addRow("Initiell startposisjon:", self.start_pos_input)
+        layout.addRow("Deaktiverte brønner:", self.disabled_wells_input)
+        layout.addRow("Standard volum (µL):", self.vol_default_input)
+        layout.addRow("Fil for startposisjon:", self.start_pos_file_input)
+        layout.addRow("Fil for volum:", self.volume_file_input)
     def get_data(self):
-        try: disabled_wells = [int(x.strip()) for x in self.disabled_wells_input.text().split(',') if x.strip()]
-        except ValueError: return None
-        return {"groupName": self.group_name_input.text() or "Boks Gruppe", "shape": self.shape_input.currentText(), "maxBoxes": int(self.max_boxes_input.text() or "1"), "startPositionFile": self.start_pos_file_input.text(), "initialStartPosition": int(self.start_pos_input.text() or "1"), "disabledWells": disabled_wells, "volume": {"volumeFile": self.volume_file_input.text(), "defaultValue": int(self.vol_default_input.text() or "0"), "min": 0, "max": 5000}}
+        try:
+            disabled_wells = [int(x.strip()) for x in self.disabled_wells_input.text().split(',') if x.strip()]
+        except ValueError:
+            return None
+        return {
+            "groupName": self.group_name_input.text() or "Boks Gruppe",
+            "shape": self.shape_input.currentText(),
+            "color": self.color_options[self.color_input.currentText()],
+            "maxBoxes": int(self.max_boxes_input.text() or "1"),
+            "startPositionFile": self.start_pos_file_input.text(),
+            "initialStartPosition": int(self.start_pos_input.text() or "1"),
+            "disabledWells": disabled_wells,
+            "volume": {
+                "volumeFile": self.volume_file_input.text(),
+                "defaultValue": int(self.vol_default_input.text() or "0"),
+                "min": 0,
+                "max": 5000
+            }
+        }
+        
     def set_data(self, data):
-        self.group_name_input.setText(data.get("groupName", "")); self.shape_input.setCurrentText(data.get("shape", "rect")); self.max_boxes_input.setText(str(data.get("maxBoxes", 1))); self.start_pos_input.setText(str(data.get("initialStartPosition", 1))); self.start_pos_file_input.setText(data.get("startPositionFile", "")); disabled_str = ", ".join(map(str, data.get("disabledWells", []))); self.disabled_wells_input.setText(disabled_str); volume = data.get("volume", {}); self.vol_default_input.setText(str(volume.get("defaultValue", 0))); self.volume_file_input.setText(volume.get("volumeFile", ""))
+        self.group_name_input.setText(data.get("groupName", ""))
+        self.shape_input.setCurrentText(data.get("shape", "rect"))
+        
+        # Set color if present, otherwise default to gray
+        if "color" in data:
+            color_hex = data["color"]
+            color_name = next((name for name, hex in self.color_options.items() 
+                             if hex.lower() == color_hex.lower()), "Grå")
+            self.color_input.setCurrentText(color_name)
+            
+        self.max_boxes_input.setText(str(data.get("maxBoxes", 1)))
+        self.start_pos_input.setText(str(data.get("initialStartPosition", 1)))
+        self.start_pos_file_input.setText(data.get("startPositionFile", ""))
+        disabled_str = ", ".join(map(str, data.get("disabledWells", [])))
+        self.disabled_wells_input.setText(disabled_str)
+        volume = data.get("volume", {})
+        self.vol_default_input.setText(str(volume.get("defaultValue", 0)))
+        self.volume_file_input.setText(volume.get("volumeFile", ""))
 
 class UDFOptionForm(QWidget):
     remove_me = Signal(object)

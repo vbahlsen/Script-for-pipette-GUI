@@ -18,14 +18,14 @@ class FullScreenEditor(QWidget):
         self.plate_widget = WellPlateWidget(fixed_size=False)
         self.plate_widget.well_clicked.connect(self.well_selected.emit)
         layout.addWidget(self.plate_widget)
-    def set_plate(self, shape, start_pos, sample_count, disabled_wells):
+    def set_plate(self, shape, start_pos, sample_count, disabled_wells, frame_color=None):
         if self.plate_widget.shape != shape:
             new_plate = WellPlateWidget(shape=shape, fixed_size=False)
             self.layout().replaceWidget(self.plate_widget, new_plate)
             self.plate_widget.deleteLater()
             self.plate_widget = new_plate
             self.plate_widget.well_clicked.connect(self.well_selected.emit)
-        self.plate_widget.set_state(start_pos, sample_count, disabled_wells)
+        self.plate_widget.set_state(start_pos, sample_count, disabled_wells, frame_color)
         self.plate_widget.set_interactive(True)
 
 class MainWindow(QMainWindow):
@@ -77,14 +77,33 @@ class MainWindow(QMainWindow):
         self.detail_screen.load_script_data(script_data)
         self.stacked_widget.setCurrentWidget(self.detail_screen)
     def show_fullscreen_editor(self, group_widget):
-        self.detail_screen.active_group_for_editing = group_widget
-        plate_data = group_widget.group_data
-        shape = plate_data.get("shape", "rect")
-        start_pos = plate_data.get("currentStartPosition", 1)
-        disabled_wells = plate_data.get("disabledWells", [])
-        self.fullscreen_editor.plate_widget.temp_selected_well = None
-        self.fullscreen_editor.set_plate(shape, start_pos, 0, disabled_wells)
-        self.stacked_widget.setCurrentWidget(self.fullscreen_editor)
+        try:
+            self.detail_screen.active_group_for_editing = group_widget
+            plate_data = group_widget.group_data
+            shape = plate_data.get("shape", "rect")
+            start_pos = plate_data.get("currentStartPosition", 1)
+            disabled_wells = plate_data.get("disabledWells", [])
+            
+            # Handle missing color field gracefully
+            frame_color = plate_data.get("color")  # Will be None if missing
+            
+            self.fullscreen_editor.plate_widget.temp_selected_well = None
+            
+            try:
+                # Try with color first
+                if frame_color:
+                    self.fullscreen_editor.set_plate(shape, start_pos, 0, disabled_wells, frame_color)
+                else:
+                    # Fall back to default gray if no color specified
+                    self.fullscreen_editor.set_plate(shape, start_pos, 0, disabled_wells, "#808080")
+            except Exception as e:
+                print(f"Error setting plate with color: {e}")
+                # Ultimate fallback without color parameter
+                self.fullscreen_editor.set_plate(shape, start_pos, 0, disabled_wells)
+                
+            self.stacked_widget.setCurrentWidget(self.fullscreen_editor)
+        except Exception as e:
+            print(f"Error showing fullscreen editor: {e}")
     def handle_fullscreen_selection(self, well_index):
         self.fullscreen_editor.plate_widget.temp_selected_well = well_index
         self.fullscreen_editor.plate_widget.update()
