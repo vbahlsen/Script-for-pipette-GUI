@@ -16,6 +16,9 @@ from PySide6.QtWidgets import QApplication
 
 from gui_widgets import WellPlateWidget, NumericKeypad, ThumbnailButton
 from custom_widgets import NumericDisplay
+from box_group_summary import BoxGroupSummaryWidget
+from box_group_widget import BoxGroupWidget
+from journal_data import JournalData
 
 class ScriptSelectorScreen(QWidget):
     script_selected = Signal(dict); settings_clicked = Signal()
@@ -54,6 +57,7 @@ class BoxGroupWidget(QFrame):
         if 'currentStartPosition' not in self.group_data:
             self.group_data['currentStartPosition'] = self.group_data['initialStartPosition']
         self.plate_widgets = []
+        self.sample_mapping = None  # Will store mapping for pooled scripts
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self._setup_ui()
         self.update_displays()
@@ -64,7 +68,9 @@ class BoxGroupWidget(QFrame):
         name_label.setFont(QFont("Arial", 28, QFont.Bold))
         name_label.setAlignment(Qt.AlignCenter)
         
-        # FIKS: Overflødig start_pos_display er fjernet herfra.
+        # Add summary widget for pooled scripts
+        self.summary_widget = BoxGroupSummaryWidget()
+        self.summary_widget.hide()  # Hidden by default, shown only for pooled scripts
         
         controls_layout = QVBoxLayout()
         self._setup_controls(controls_layout)
@@ -73,6 +79,7 @@ class BoxGroupWidget(QFrame):
         self.plates_layout = QVBoxLayout(self.plates_container)
         
         main_layout.addWidget(name_label)
+        main_layout.addWidget(self.summary_widget)
         main_layout.addLayout(controls_layout)
         main_layout.addWidget(self.plates_container, stretch=1)
 
@@ -105,7 +112,7 @@ class BoxGroupWidget(QFrame):
             plate.start_pos = self.group_data.get('currentStartPosition', 1)
             plate.update()
 
-    def update_plates(self, sample_count, start_pos, disabled_wells):
+    def update_plates(self, sample_count, start_pos, disabled_wells, sample_data=None):
         try:
             # Clear existing plates
             while self.plates_layout.count():
@@ -114,19 +121,25 @@ class BoxGroupWidget(QFrame):
                     child.widget().deleteLater()
             self.plate_widgets.clear()
 
-            show_title_on_first_plate = True
+            # Get frame color
+            frame_color = self.group_data.get("color", "#808080")
+            group_type = self.group_data.get("groupType", "standard")
             
+            # Update summary for pooled script types
+            if group_type in ["individual", "pooled"]:
+                self.summary_widget.show()
+                self.summary_widget.update_summary(group_type, sample_data)
+            else:
+                self.summary_widget.hide()
+
+            # Handle empty state
             if sample_count <= 0:
-                plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), show_title=show_title)
-                # Handle missing color field gracefully
-                if "color" in self.group_data:
-                    frame_color = self.group_data["color"]
-                else:
-                    frame_color = "#808080"  # Default gray for older configs
+                plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), show_title=True)
                 plate.set_state(start_pos=start_pos, sample_count=0, disabled_wells=disabled_wells, frame_color=frame_color)
                 self.plates_layout.addWidget(plate)
                 self.plate_widgets.append(plate)
                 return
+
         except Exception as e:
             print(f"Error updating plates: {e}")
             return
@@ -188,24 +201,130 @@ class ScriptDetailScreen(QWidget):
         self.active_input_display = None
         self.udf_widgets = []
         self.temp_sample_input = "0"  # Store temporary value until confirmed
+        self.journal_data = JournalData()  # For handling pooled samples
         self._setup_ui(QVBoxLayout(self))
         self._connect_signals()
     def load_script_data(self, script_data):
-        self.keypad.hide(); self.script_data = script_data
+        """
+        Load script data and prepare the UI.
+        Returns True if loading was successful, False otherwise.
+        """
+        self.keypad.hide()
+        self.script_data = script_data
+        
+        # Clear existing box groups
         while self.groups_layout.count():
             child = self.groups_layout.takeAt(0)
-            if child.widget(): child.widget().deleteLater()
+            if child.widget(): 
+                child.widget().deleteLater()
         self.box_group_widgets.clear()
+
+        # Load journal data for pooled scripts
+        sample_mapping = None
+        if script_data.get("scriptType") == "pooled":
+            script_dir = self.base_dir / "scripts" / script_data['folder_name']
+            journal_pattern = script_data.get('journalDataFile', '')
+            txt_files = list(script_dir.glob("*.txt"))
+            csv_files = list(script_dir.glob("*.csv"))
+            journal_files = txt_files + csv_files
+            
+            if len(journal_files) > 1:
+                QMessageBox.warning(self, "Flere journalfiler", 
+                                  f"Flere lister i {script_dir}, rydd opp i disse og prøv igjen")
+                return False  # Indicate failure
+            elif len(journal_files) == 1:
+                if self.journal_data.load_file(str(journal_files[0])):
+                    sample_mapping = self.journal_data.get_sample_mapping()
+                    # Set up display for pooled scripts
+                    self.samples_display.setEnabled(False)
+                    
+                    # Get sample counts
+                    individual_count = len(sample_mapping["individual"])
+                    pool_count = len(sample_mapping["pooled"])
+                    self.samples_display.setText(str(individual_count))
+                    
+                    # Create sample count label if it doesn't exist
+                    if not hasattr(self, 'pooled_info_label'):
+                        self.pooled_info_label = QLabel()
+                        self.pooled_info_label.setFont(QFont("Arial", 16))
+                        index = self.main_layout.indexOf(self.sample_range_label)
+                        self.main_layout.insertWidget(index + 1, self.pooled_info_label)
+                    
+                    # Update pooled sample information
+                    start_id = min(g["case_id"] for g in sample_mapping["individual"])
+                    end_id = max(g["case_id"] for g in sample_mapping["individual"])
+                    self.pooled_info_label.setText(
+                        f"Antall journalsaker: {pool_count}\n"
+                        f"Første og siste journalsak: {start_id} til {end_id}")
+                    self.pooled_info_label.show()
+                else:
+                    if hasattr(self, 'pooled_info_label'):
+                        self.pooled_info_label.hide()
+                    
+                    # Show summary of journal data
+                    start_id = min(g["case_id"] for g in sample_mapping["individual"])
+                    end_id = max(g["case_id"] for g in sample_mapping["individual"])
+                    sample_count = len(sample_mapping["individual"])
+                    pool_count = len(sample_mapping["pooled"])
+                    
+                    info = (f"Antall prøver: {sample_count}\n"
+                           f"Antall samleprøver: {pool_count}\n"
+                           f"Saker: {start_id} til {end_id}")
+                    self.description_label.setText(
+                        self.script_data.get("description", "") + "\n\n" + info)
+            else:
+                QMessageBox.warning(self, "Mangler journalfil", 
+                                  f"Ingen journalfiler funnet i {script_dir}")
+                return False  # Indicate failure
+        else:
+            # Enable sample count input for standard scripts
+            self.samples_display.setEnabled(True)
+        
+        # Create box group widgets
         for group_data in self.script_data.get("boxGroups", []):
             try:
+                # Load start position
                 with open(group_data['startPositionFile'], 'r') as f:
                     pos_from_file = int(f.read().strip())
-                    if 1 <= pos_from_file <= 96: group_data['currentStartPosition'] = pos_from_file
-                    else: group_data['currentStartPosition'] = group_data['initialStartPosition']
-            except (FileNotFoundError, ValueError, KeyError): group_data['currentStartPosition'] = group_data['initialStartPosition']
-            group_widget = BoxGroupWidget(group_data); group_widget.volume_display_clicked.connect(self._on_volume_display_clicked); group_widget.change_start_pos_clicked.connect(self._on_change_start_pos_clicked); 
-            self.groups_layout.addWidget(group_widget); self.box_group_widgets.append(group_widget)
-        self.samples_input = ""; self.samples_display.setText("0"); self.start_button.setEnabled(False); self._set_active_input(None); self.script_name_label.setText(self.script_data.get("scriptName", "Ukjent Script"))
+                    if 1 <= pos_from_file <= 96:
+                        group_data['currentStartPosition'] = pos_from_file
+                    else:
+                        group_data['currentStartPosition'] = group_data['initialStartPosition']
+            except (FileNotFoundError, ValueError, KeyError):
+                group_data['currentStartPosition'] = group_data['initialStartPosition']
+
+            # Create and set up group widget
+            group_widget = BoxGroupWidget(group_data)
+            group_widget.volume_display_clicked.connect(self._on_volume_display_clicked)
+            group_widget.change_start_pos_clicked.connect(self._on_change_start_pos_clicked)
+
+            # Set sample data for pooled scripts
+            if sample_mapping and group_data.get("groupType") in ["individual", "pooled"]:
+                # Get samples specific to this group type
+                group_samples = sample_mapping[group_data["groupType"]]
+                sample_count = len(group_samples)
+                
+                print(f"Setting up {group_data['groupType']} group with {sample_count} samples")
+                
+                # Update plates with specific sample data
+                group_widget.update_plates(
+                    sample_count, 
+                    group_data['currentStartPosition'], 
+                    group_data.get('disabledWells', []), 
+                    group_samples
+                )
+            
+            self.groups_layout.addWidget(group_widget)
+            self.box_group_widgets.append(group_widget)
+
+        # Reset UI state
+        if not sample_mapping:
+            self.samples_input = ""
+            self.samples_display.setText("0")
+            
+        self.start_button.setEnabled(False)
+        self._set_active_input(None)
+        self.script_name_label.setText(self.script_data.get("scriptName", "Ukjent Script"))
         self.description_label.setText(self.script_data.get("description", "")); sample_range = self.script_data.get("sampleRange", {}); min_s, max_s = sample_range.get("min", 1), sample_range.get("max", 96); self.sample_range_label.setText(f"Gyldig antall: {min_s} - {max_s}")
         self.thumbnail_label.clear(); thumbnail_path = script_data.get("thumbnail", "")
         if thumbnail_path:
@@ -224,6 +343,9 @@ class ScriptDetailScreen(QWidget):
                         radio = QRadioButton(option.get("label")); radio.setFont(QFont("Arial", 16)); layout.addWidget(radio); button_group.addButton(radio, i)
                 self.udf_main_layout.addWidget(group_box); self.udf_widgets.append({"group": group_box, "buttons": button_group, "data": udf_data})
         self._update_all_plates()
+        
+        # Return success
+        return True
     def _setup_ui(self, main_layout):
         self.main_layout = main_layout; main_layout.setContentsMargins(0,0,0,0); scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); scroll_area.setStyleSheet("QScrollArea { border: none; }"); self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 20)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); self.script_name_label = QLabel("Script Navn"); self.script_name_label.setFont(QFont("Arial", 32, QFont.Bold)); self.script_name_label.setAlignment(Qt.AlignCenter); self.thumbnail_label = QLabel(); self.thumbnail_label.setFixedSize(225, 150); self.thumbnail_label.setScaledContents(True); self.thumbnail_label.setAlignment(Qt.AlignCenter); self.thumbnail_label.setStyleSheet("border: 1px solid #ccc;"); self.description_label = QLabel("Beskrivelse her..."); self.description_label.setFont(QFont("Arial", 16)); self.description_label.setWordWrap(True); info_vbox = QVBoxLayout(); info_vbox.addWidget(self.description_label); info_vbox.addStretch(1); info_layout.addWidget(self.thumbnail_label); info_layout.addLayout(info_vbox); self.sample_range_label = QLabel("Gyldig antall: 1 - 96"); self.sample_range_label.setFont(QFont("Arial", 14, italic=True)); 
         samples_layout = QHBoxLayout()
@@ -385,34 +507,229 @@ class ScriptDetailScreen(QWidget):
             self.active_input_display.setText(str(current_str or "0"))
     def _update_all_plates(self):
         try:
+            # Check if this is a pooled script
+            is_pooled = self.script_data.get("scriptType") == "pooled"
+            
             # Update the actual sample input from temporary storage
             self.samples_input = self.temp_sample_input
             num_samples = int(self.samples_input or "0")
-            sample_range = self.script_data.get("sampleRange", {})
-            min_s, max_s = sample_range.get("min", 1), sample_range.get("max", 96)
             
-            if num_samples != 0 and not (min_s <= num_samples <= max_s):
-                QMessageBox.warning(self, "Ugyldig antall", f"Antall prøver må være mellom {min_s} og {max_s}.")
-                return
+            # For pooled scripts, get sample data from journal
+            sample_mapping = None
+            if is_pooled:
+                sample_mapping = self.journal_data.get_sample_mapping()
+                if not sample_mapping:
+                    print("No sample mapping available")
+                    return
+            
+            # Validate sample range for standard scripts
+            if not is_pooled:
+                sample_range = self.script_data.get("sampleRange", {})
+                min_s, max_s = sample_range.get("min", 1), sample_range.get("max", 96)
+                
+                if num_samples != 0 and not (min_s <= num_samples <= max_s):
+                    QMessageBox.warning(self, "Ugyldig antall", f"Antall prøver må være mellom {min_s} og {max_s}.")
+                    return
+            
+            # Update each box group
             for group in self.box_group_widgets:
-                start_pos = group.group_data.get('currentStartPosition', 1); disabled = group.group_data.get('disabledWells', []); group.update_plates(num_samples, start_pos, disabled)
-            self.start_button.setEnabled(num_samples > 0)
-        except (ValueError, AttributeError): print("Kunne ikke oppdatere plater.")
+                start_pos = group.group_data.get('currentStartPosition', 1)
+                disabled = group.group_data.get('disabledWells', [])
+                
+                if is_pooled and sample_mapping and group.group_data.get("groupType") in ["individual", "pooled"]:
+                    # Use specific sample data for pooled scripts
+                    group_type = group.group_data.get("groupType")
+                    group_samples = sample_mapping[group_type]
+                    group.update_plates(len(group_samples), start_pos, disabled, group_samples)
+                else:
+                    # Standard script just uses the sample count
+                    group.update_plates(num_samples, start_pos, disabled)
+            
+            # Enable start button if we have samples
+            has_samples = num_samples > 0 or (is_pooled and sample_mapping is not None)
+            self.start_button.setEnabled(has_samples)
+        except (ValueError, AttributeError) as e: 
+            print(f"Kunne ikke oppdatere plater: {e}")
     def _on_start_pipetting(self):
         try:
-            visualization_path = self.script_data.get("visualizationFile", "script_visual.png"); size = self.grab_container.size(); pixmap = QPixmap(size); self.grab_container.render(pixmap); pixmap.save(visualization_path); print(f"Bilde av oppsett lagret til: {visualization_path}")
-            with open(self.script_data['targetFile'], 'w') as f: f.write(self.script_data['targetValue'])
-            with open(self.script_data['sampleCountFile'], 'w') as f: f.write(self.samples_input or "0")
-            for group_widget in self.box_group_widgets:
+            import os
+            from pathlib import Path
+            
+            # Create a function to ensure directories exist using Path
+            def ensure_directory_exists(file_path):
+                if not file_path:
+                    print("Warning: Empty file path")
+                    return False
+                    
+                try:
+                    directory = os.path.dirname(file_path)
+                    if not directory:
+                        print(f"Warning: No directory in path: {file_path}")
+                        return False
+                        
+                    # Use pathlib for more robust directory creation
+                    path_obj = Path(directory)
+                    if not path_obj.exists():
+                        print(f"Creating directory: {directory}")
+                        path_obj.mkdir(parents=True, exist_ok=True)
+                        
+                        # Verify directory was created
+                        if path_obj.exists():
+                            print(f"  Directory created successfully")
+                            return True
+                        else:
+                            print(f"  Failed to create directory")
+                            return False
+                    return True
+                except Exception as dir_err:
+                    print(f"Error creating directory for {file_path}: {dir_err}")
+                    return False
+            
+            print("\n--- Starting export process ---")
+            
+            # Pre-create critical directories
+            critical_dirs = ["C:/robot/variables/Pooled"]
+            for dir_path in critical_dirs:
+                try:
+                    dir_path_norm = os.path.normpath(dir_path)  # Normalize path format
+                    print(f"Pre-creating critical directory: {dir_path_norm}")
+                    Path(dir_path_norm).mkdir(parents=True, exist_ok=True)
+                    if os.path.exists(dir_path_norm):
+                        print(f"  Critical directory exists now: {dir_path_norm}")
+                    else:
+                        print(f"  WARNING: Failed to create directory: {dir_path_norm}")
+                except Exception as dir_err:
+                    print(f"  Error pre-creating directory {dir_path}: {dir_err}")
+            
+            # Handle visualization
+            visualization_path = self.script_data.get("visualizationFile")
+            if visualization_path:
+                # Normalize path
+                visualization_path = os.path.normpath(visualization_path)
+                print(f"Saving visualization to: {visualization_path}")
+                if ensure_directory_exists(visualization_path):
+                    size = self.grab_container.size()
+                    pixmap = QPixmap(size)
+                    self.grab_container.render(pixmap)
+                    pixmap.save(visualization_path)
+                    print(f"Visualization saved successfully")
+                else:
+                    print(f"WARNING: Could not create directory for {visualization_path}")
+            
+            # Handle script target file
+            if 'targetFile' in self.script_data:
+                target_file = self.script_data['targetFile']
+                # Normalize path
+                target_file = os.path.normpath(target_file)
+                print(f"Writing target file: {target_file}")
+                if ensure_directory_exists(target_file):
+                    with open(target_file, 'w') as f:
+                        f.write(self.script_data['targetValue'])
+                    print(f"Target file written successfully")
+                else:
+                    print(f"WARNING: Could not create directory for {target_file}")
+            
+            # Handle sample count file
+            if 'sampleCountFile' in self.script_data and self.script_data['sampleCountFile']:
+                sample_count_file = self.script_data['sampleCountFile']
+                
+                # Normalize the path to handle both formats of slashes
+                sample_count_file = os.path.normpath(sample_count_file)
+                
+                print(f"Writing sample count file: {sample_count_file}")
+                if ensure_directory_exists(sample_count_file):
+                    with open(sample_count_file, 'w') as f:
+                        f.write(self.samples_input or "0")
+                    print(f"Sample count file written successfully")
+                else:
+                    print(f"WARNING: Could not create directory for {sample_count_file}")
+            else:
+                print("No sample count file specified, skipping")
+            
+            # Handle box groups
+            print(f"Processing {len(self.box_group_widgets)} box groups")
+            for i, group_widget in enumerate(self.box_group_widgets):
                 group_data = group_widget.group_data
-                with open(group_data['startPositionFile'], 'w') as f: f.write(str(group_data['currentStartPosition']))
-                with open(group_data['volume']['volumeFile'], 'w') as f: f.write(str(group_data['volume']['defaultValue']))
-            for udf_widget in self.udf_widgets:
+                print(f"Box group {i+1}: {group_data.get('groupName', 'Unnamed')}")
+                
+                # Write start position
+                if 'startPositionFile' in group_data:
+                    start_pos_file = group_data['startPositionFile']
+                    # Normalize path
+                    start_pos_file = os.path.normpath(start_pos_file)
+                    print(f"  Writing start position to: {start_pos_file}")
+                    if ensure_directory_exists(start_pos_file):
+                        with open(start_pos_file, 'w') as f:
+                            f.write(str(group_data['currentStartPosition']))
+                        print(f"  Start position written successfully")
+                    else:
+                        print(f"  WARNING: Could not create directory for {start_pos_file}")
+                
+                # Write volume
+                if 'volume' in group_data and 'volumeFile' in group_data['volume']:
+                    volume_file = group_data['volume']['volumeFile']
+                    # Normalize path
+                    volume_file = os.path.normpath(volume_file)
+                    print(f"  Writing volume to: {volume_file}")
+                    if ensure_directory_exists(volume_file):
+                        with open(volume_file, 'w') as f:
+                            f.write(str(group_data['volume']['defaultValue']))
+                        print(f"  Volume written successfully")
+                    else:
+                        print(f"  WARNING: Could not create directory for {volume_file}")
+            
+            # Handle user defined variables
+            print(f"Processing {len(self.udf_widgets)} user defined variables")
+            for i, udf_widget in enumerate(self.udf_widgets):
                 if udf_widget["buttons"].checkedId() != -1:
-                    selected_id = udf_widget["buttons"].checkedId(); selected_option = udf_widget["data"]["options"][selected_id]
-                    with open(selected_option['file'], 'w') as f: f.write(str(selected_option['value']))
+                    selected_id = udf_widget["buttons"].checkedId()
+                    selected_option = udf_widget["data"]["options"][selected_id]
+                    if 'file' in selected_option:
+                        udf_file = selected_option['file']
+                        # Normalize path
+                        udf_file = os.path.normpath(udf_file)
+                        print(f"  UDF {i+1}: Writing to {udf_file}")
+                        if ensure_directory_exists(udf_file):
+                            with open(udf_file, 'w') as f:
+                                f.write(str(selected_option['value']))
+                        else:
+                            print(f"  WARNING: Could not create directory for {udf_file}")
+                        print(f"  UDF written successfully")
+            
+            print("All files written successfully!")
+            print("Configuration saved. Closing GUI.")
+            QApplication.instance().quit()
+            
             print("Konfigurasjon lagret. Lukker GUI."); QApplication.instance().quit()
         except Exception as e:
+            import traceback
+            import sys
+            error_details = traceback.format_exc()
+            print(f"ERROR: Failed to save configuration")
+            print(f"Exception type: {type(e).__name__}")
+            print(f"Exception message: {str(e)}")
+            print(f"Error details: {error_details}")
+            
+            # Check for common error causes
+            if "No such file or directory" in str(e):
+                print("Checking directories:")
+                for path in [self.script_data.get('visualizationFile', ''), 
+                            self.script_data.get('targetFile', ''),
+                            self.script_data.get('sampleCountFile', '')]:
+                    if path:
+                        dir_path = os.path.dirname(path)
+                        print(f"  Directory for {path}: exists={os.path.exists(dir_path)}, is_dir={os.path.isdir(dir_path) if os.path.exists(dir_path) else 'N/A'}")
+                        
+                # Try creating the directory with different method
+                try:
+                    from pathlib import Path
+                    problem_path = str(e).split("No such file or directory: ")[-1].strip("'\"")
+                    print(f"Trying to create directory for problematic path: {problem_path}")
+                    Path(os.path.dirname(problem_path)).mkdir(parents=True, exist_ok=True)
+                    print(f"Directory created successfully with Path")
+                except Exception as dir_e:
+                    print(f"Failed to create directory with alternative method: {dir_e}")
+            
             QMessageBox.critical(self, "Feil ved lagring", f"En feil oppstod under skriving til fil:\n{e}")
 
 # ... (Resten av filen, SettingsScreen, GeneratorScreen, etc. er uendret)
@@ -477,6 +794,11 @@ class BoxGroupForm(QFrame):
         self.volume_file_input = QLineEdit()
         self.color_input = QComboBox()
         
+        # Add group type selector for pooled scripts
+        self.type_input = QComboBox()
+        self.type_input.addItems(["standard", "individual", "pooled"])
+        self.type_input.setCurrentText("standard")
+        
         # Add standard colors with friendly names
         self.color_options = {
             "Grå": "#808080",
@@ -508,6 +830,7 @@ class BoxGroupForm(QFrame):
         # Add rows to form
         layout.addRow(remove_button)
         layout.addRow("Gruppenavn:", self.group_name_input)
+        layout.addRow("Type:", self.type_input)
         layout.addRow("Brønnform:", self.shape_input)
         layout.addRow("Boksens farge:", self.color_input)  # New color selector
         layout.addRow("Maks antall bokser:", self.max_boxes_input)
@@ -523,6 +846,7 @@ class BoxGroupForm(QFrame):
             return None
         return {
             "groupName": self.group_name_input.text() or "Boks Gruppe",
+            "groupType": self.type_input.currentText(),
             "shape": self.shape_input.currentText(),
             "color": self.color_options[self.color_input.currentText()],
             "maxBoxes": int(self.max_boxes_input.text() or "1"),
@@ -539,6 +863,13 @@ class BoxGroupForm(QFrame):
         
     def set_data(self, data):
         self.group_name_input.setText(data.get("groupName", ""))
+        
+        # Only set type if it's in the available items
+        requested_type = data.get("groupType", "standard")
+        available_types = [self.type_input.itemText(i) for i in range(self.type_input.count())]
+        if requested_type in available_types:
+            self.type_input.setCurrentText(requested_type)
+        
         self.shape_input.setCurrentText(data.get("shape", "rect"))
         
         # Set color if present, otherwise default to gray
@@ -598,16 +929,86 @@ class GeneratorScreen(QWidget):
     def __init__(self, scripts_dir, parent=None):
         super().__init__(parent); self.scripts_dir = scripts_dir; self.editing_folder_name = None; self.box_group_forms = []; self.udf_forms = []
         main_layout = QVBoxLayout(self); scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); main_layout.addWidget(scroll_area); container = QWidget(); form_layout = QFormLayout(container); form_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows); scroll_area.setWidget(container); font = QFont("Arial", 16)
-        self.script_name_input = QLineEdit(); self.target_value_input = QLineEdit(); self.description_input = QTextEdit(); self.thumbnail_input = QLineEdit(); self.sample_min_input = QLineEdit("1"); self.sample_max_input = QLineEdit("96"); self.target_file_input = QLineEdit("C:/robot/selected_script.txt"); self.sample_count_file_input = QLineEdit("C:/robot/variables/sample_count.txt"); self.visualization_file_input = QLineEdit("script_visual.png")
-        for w in [self.script_name_input, self.target_value_input, self.description_input, self.thumbnail_input, self.sample_min_input, self.sample_max_input, self.target_file_input, self.sample_count_file_input, self.visualization_file_input]: w.setFont(font)
-        form_layout.addRow(QLabel("<h3>Generell Info</h3>")); form_layout.addRow("Navn på script:", self.script_name_input); form_layout.addRow("Verdi for robot:", self.target_value_input); form_layout.addRow("Beskrivelse:", self.description_input); form_layout.addRow("Filnavn for thumbnail:", self.thumbnail_input); sample_range_layout = QHBoxLayout(); sample_range_layout.addWidget(self.sample_min_input); sample_range_layout.addWidget(QLabel("til")); sample_range_layout.addWidget(self.sample_max_input); form_layout.addRow("Antall prøver (min-maks):", sample_range_layout); form_layout.addRow(QLabel("<u>Globale filstier:</u>")); form_layout.addRow("Fil for valgt script:", self.target_file_input); form_layout.addRow("Fil for antall prøver:", self.sample_count_file_input); form_layout.addRow("Fil for visualisering (.png):", self.visualization_file_input)
+        # Create main input fields
+        # Create script type selector
+        self.script_type_input = QComboBox()
+        self.script_type_input.addItems(["standard", "pooled"])
+        
+        # Create main input fields
+        self.script_name_input = QLineEdit()
+        self.target_value_input = QLineEdit()
+        self.description_input = QTextEdit()
+        self.thumbnail_input = QLineEdit()
+        self.target_file_input = QLineEdit("C:/robot/selected_script.txt")
+        self.visualization_file_input = QLineEdit("script_visual.png")
+        
+        # Create sample range widget
+        self.sample_range_widget = QWidget()
+        sample_range_layout = QHBoxLayout(self.sample_range_widget)
+        self.sample_min_input = QLineEdit("1")
+        self.sample_max_input = QLineEdit("96")
+        sample_range_layout.addWidget(self.sample_min_input)
+        sample_range_layout.addWidget(QLabel("til"))
+        sample_range_layout.addWidget(self.sample_max_input)
+        
+        # Create file inputs
+        self.sample_count_file_input = QLineEdit("C:/robot/variables/sample_count.txt")
+        self.journal_dir_input = QLineEdit()
+        self.journal_dir_input.setPlaceholderText("Eksempel: test_data.txt")
+        
+        # Create box groups layout
+        self.box_groups_layout = QVBoxLayout()
+        
+        # Connect script type change handler after all widgets are created
+        self.script_type_input.currentTextChanged.connect(self._on_script_type_changed)
+        
+        for w in [self.script_name_input, self.target_value_input, self.description_input, self.thumbnail_input, 
+                 self.sample_min_input, self.sample_max_input, self.target_file_input, self.sample_count_file_input, 
+                 self.visualization_file_input, self.script_type_input, self.journal_dir_input]: w.setFont(font)
+        # General info section
+        form_layout.addRow(QLabel("<h3>Generell Info</h3>"))
+        form_layout.addRow("Navn på script:", self.script_name_input)
+        form_layout.addRow("Type script:", self.script_type_input)
+        form_layout.addRow("Verdi for robot:", self.target_value_input)
+        form_layout.addRow("Beskrivelse:", self.description_input)
+        form_layout.addRow("Filnavn for thumbnail:", self.thumbnail_input)
+        
+        # Sample configuration section
+        form_layout.addRow("Antall prøver (min-maks):", self.sample_range_widget)
+        
+        # File paths section
+        form_layout.addRow(QLabel("<u>Globale filstier:</u>"))
+        form_layout.addRow("Fil for valgt script:", self.target_file_input)
+        form_layout.addRow("Fil for antall prøver:", self.sample_count_file_input)
+        form_layout.addRow("Fil for visualisering (.png):", self.visualization_file_input)
+        form_layout.addRow("Journaldatafil:", self.journal_dir_input)
+        
+        # Initialize visibility
+        self._on_script_type_changed(self.script_type_input.currentText())
         form_layout.addRow(QLabel("<h3>Boksgrupper</h3>")); self.box_groups_layout = QVBoxLayout(); form_layout.addRow(self.box_groups_layout); add_group_button = QPushButton("+ Legg til boksgruppe"); add_group_button.setFont(font); add_group_button.clicked.connect(lambda: self._add_box_group_form()); form_layout.addRow(add_group_button)
         form_layout.addRow(QLabel("<h3>Brukerdefinerte valg</h3>")); self.udf_layout = QVBoxLayout(); form_layout.addRow(self.udf_layout); add_udf_button = QPushButton("+ Legg til brukerdefinert valg"); add_udf_button.setFont(font); add_udf_button.clicked.connect(lambda: self._add_udf_form()); form_layout.addRow(add_udf_button)
         back_button = QPushButton("← Avbryt"); back_button.setFont(font); back_button.clicked.connect(self.back_to_settings.emit); save_button = QPushButton("Lagre Script"); save_button.setFont(font); save_button.clicked.connect(self._save_script); button_layout = QHBoxLayout(); button_layout.addWidget(back_button); button_layout.addStretch(1); button_layout.addWidget(save_button); main_layout.addLayout(button_layout)
     def _add_box_group_form(self, data=None):
-        form = BoxGroupForm(); form.remove_me.connect(self._remove_box_group_form);
-        if data: form.set_data(data)
-        self.box_groups_layout.addWidget(form); self.box_group_forms.append(form)
+        form = BoxGroupForm()
+        form.remove_me.connect(self._remove_box_group_form)
+        
+        # Set up type options based on current script type
+        is_pooled = self.script_type_input.currentText() == "pooled"
+        form.type_input.clear()
+        
+        if is_pooled:
+            form.type_input.addItems(["individual", "pooled"])
+            form.type_input.setCurrentText("individual")  # Default for new box groups in pooled scripts
+        else:
+            form.type_input.addItems(["standard"])
+            form.type_input.setCurrentText("standard")
+            
+        # Apply data if provided
+        if data: 
+            form.set_data(data)
+            
+        self.box_groups_layout.addWidget(form)
+        self.box_group_forms.append(form)
     def _remove_box_group_form(self, form):
         if len(self.box_group_forms) > 1: self.box_groups_layout.removeWidget(form); self.box_group_forms.remove(form); form.deleteLater()
         else: QMessageBox.warning(self, "Feil", "Et script må ha minst én boksgruppe.")
@@ -622,15 +1023,95 @@ class GeneratorScreen(QWidget):
             form = self.box_group_forms[0]; self.box_groups_layout.removeWidget(form); self.box_group_forms.remove(form); form.deleteLater()
         while self.udf_forms:
             form = self.udf_forms[0]; self.udf_layout.removeWidget(form); self.udf_forms.remove(form); form.deleteLater()
+    def _on_script_type_changed(self, script_type):
+        # Show/hide fields based on script type
+        is_pooled = script_type == "pooled"
+        
+        # Control visibility of fields
+        self.journal_dir_input.setVisible(is_pooled)
+        self.sample_count_file_input.setVisible(not is_pooled)
+        self.sample_range_widget.setVisible(not is_pooled)
+        
+        # Clear any existing box groups
+        self._clear_forms()
+        
+        # Add default box groups based on script type
+        if is_pooled:
+            # Add individual samples group
+            individual_group = {
+                "groupName": "Individuelle Prøver",
+                "groupType": "individual",
+                "shape": "rect",
+                "color": "#0078d4"
+            }
+            self._add_box_group_form(individual_group)
+            
+            # Add pooled samples group
+            pooled_group = {
+                "groupName": "Poolede Prøver",
+                "groupType": "pooled",
+                "shape": "rect",
+                "color": "#00b347"
+            }
+            self._add_box_group_form(pooled_group)
+            
+            # Show type selector with only individual and pooled options
+            for form in self.box_group_forms:
+                form.type_input.clear()
+                form.type_input.addItems(["individual", "pooled"])
+                if "individual" in form.group_name_input.text().lower():
+                    form.type_input.setCurrentText("individual")
+                else:
+                    form.type_input.setCurrentText("pooled")
+                form.type_input.setVisible(True)
+        else:
+            # Add a standard box group
+            self._add_box_group_form()
+            
+            # Show type selector with only standard option for standard scripts
+            for form in self.box_group_forms:
+                form.type_input.clear()
+                form.type_input.addItems(["standard"])
+                form.type_input.setCurrentText("standard")
+                form.type_input.setVisible(True)
+
     def reset_form(self):
         self._clear_forms()
-        self.editing_folder_name = None; self.script_name_input.clear(); self.target_value_input.clear(); self.description_input.clear(); self.thumbnail_input.clear(); self.sample_min_input.setText("1"); self.sample_max_input.setText("96"); self.target_file_input.setText("C:/robot/selected_script.txt"); self.sample_count_file_input.setText("C:/robot/variables/sample_count.txt"); self.visualization_file_input.setText("script_visual.png")
+        self.editing_folder_name = None
+        self.script_name_input.clear()
+        self.script_type_input.setCurrentText("standard")
+        self.target_value_input.clear()
+        self.description_input.clear()
+        self.thumbnail_input.clear()
+        self.sample_min_input.setText("1")
+        self.sample_max_input.setText("96")
+        self.target_file_input.setText("C:/robot/selected_script.txt")
+        self.sample_count_file_input.setText("C:/robot/variables/sample_count.txt")
+        self.visualization_file_input.setText("script_visual.png")
+        self.journal_dir_input.clear()
+        self.journal_dir_input.setVisible(False)
         self._add_box_group_form()
     def load_data_for_edit(self, script_data):
         self._clear_forms()
-        self.editing_folder_name = script_data.get('folder_name'); self.script_name_input.setText(script_data.get("scriptName")); self.target_value_input.setText(script_data.get("targetValue", "")); self.description_input.setText(script_data.get("description", "")); self.thumbnail_input.setText(script_data.get("thumbnail", "")); self.target_file_input.setText(script_data.get("targetFile", "")); self.sample_count_file_input.setText(script_data.get("sampleCountFile", "")); self.visualization_file_input.setText(script_data.get("visualizationFile", "script_visual.png")); sample_range = script_data.get("sampleRange", {}); self.sample_min_input.setText(str(sample_range.get("min", 1))); self.sample_max_input.setText(str(sample_range.get("max", 96)))
-        for group_data in script_data.get("boxGroups", []): self._add_box_group_form(group_data)
-        for udf_data in script_data.get("userDefinedVariables", []): self._add_udf_form(udf_data)
+        self.editing_folder_name = script_data.get('folder_name')
+        self.script_name_input.setText(script_data.get("scriptName"))
+        self.script_type_input.setCurrentText(script_data.get("scriptType", "standard"))
+        self.target_value_input.setText(script_data.get("targetValue", ""))
+        self.description_input.setText(script_data.get("description", ""))
+        self.thumbnail_input.setText(script_data.get("thumbnail", ""))
+        self.target_file_input.setText(script_data.get("targetFile", ""))
+        self.sample_count_file_input.setText(script_data.get("sampleCountFile", ""))
+        self.visualization_file_input.setText(script_data.get("visualizationFile", "script_visual.png"))
+        self.journal_dir_input.setText(script_data.get("journalDataFile", ""))
+        
+        sample_range = script_data.get("sampleRange", {})
+        self.sample_min_input.setText(str(sample_range.get("min", 1)))
+        self.sample_max_input.setText(str(sample_range.get("max", 96)))
+        
+        for group_data in script_data.get("boxGroups", []): 
+            self._add_box_group_form(group_data)
+        for udf_data in script_data.get("userDefinedVariables", []): 
+            self._add_udf_form(udf_data)
     def _save_script(self):
         script_name = self.script_name_input.text().strip();
         if not script_name: QMessageBox.warning(self, "Feil", "Navn på script kan ikke være tomt."); return
@@ -641,7 +1122,31 @@ class GeneratorScreen(QWidget):
             if data is None: QMessageBox.warning(self, "Feil", "Deaktiverte brønner må være en liste med tall."); return
             box_groups_data.append(data)
         udf_data = [form.get_data() for form in self.udf_forms if form.get_data()]
-        config_data = {"scriptName": script_name, "description": self.description_input.toPlainText(), "thumbnail": self.thumbnail_input.text(), "visualizationFile": self.visualization_file_input.text(), "targetFile": self.target_file_input.text(), "targetValue": self.target_value_input.text(), "sampleCountFile": self.sample_count_file_input.text(), "sampleRange": { "min": int(self.sample_min_input.text() or 1), "max": int(self.sample_max_input.text() or 96) }, "boxGroups": box_groups_data, "userDefinedVariables": udf_data}
+        config_data = {
+            "scriptName": script_name,
+            "scriptType": self.script_type_input.currentText(),
+            "description": self.description_input.toPlainText(),
+            "thumbnail": self.thumbnail_input.text(),
+            "visualizationFile": self.visualization_file_input.text(),
+            "targetFile": self.target_file_input.text(),
+            "targetValue": self.target_value_input.text(),
+            "sampleCountFile": self.sample_count_file_input.text(),
+            "sampleRange": {
+                "min": int(self.sample_min_input.text() or 1),
+                "max": int(self.sample_max_input.text() or 96)
+            },
+            "boxGroups": box_groups_data,
+            "userDefinedVariables": udf_data
+        }
+        
+        # Add journal data file path for pooled scripts
+        if self.script_type_input.currentText() == "pooled":
+            journal_path = self.journal_dir_input.text().strip()
+            if not journal_path:
+                QMessageBox.warning(self, "Mangler journaldata", 
+                                  "Vennligst spesifiser mappe for journaldata.")
+                return
+            config_data["journalDataFile"] = journal_path
         try:
             script_folder_path = self.scripts_dir / folder_name; os.makedirs(script_folder_path, exist_ok=True)
             with open(script_folder_path / "config.json", 'w', encoding='utf-8') as f: json.dump(config_data, f, indent=4)

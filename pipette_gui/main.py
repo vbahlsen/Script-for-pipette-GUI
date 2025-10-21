@@ -74,8 +74,12 @@ class MainWindow(QMainWindow):
         self.generator_screen.load_data_for_edit(script_data)
         self.stacked_widget.setCurrentWidget(self.generator_screen)
     def show_detail_screen(self, script_data):
-        self.detail_screen.load_script_data(script_data)
-        self.stacked_widget.setCurrentWidget(self.detail_screen)
+        # Only switch to the detail screen if loading was successful
+        if self.detail_screen.load_script_data(script_data):
+            self.stacked_widget.setCurrentWidget(self.detail_screen)
+        else:
+            # If loading failed, go back to the script selector screen
+            self.stacked_widget.setCurrentWidget(self.selector_screen)
     def show_fullscreen_editor(self, group_widget):
         try:
             self.detail_screen.active_group_for_editing = group_widget

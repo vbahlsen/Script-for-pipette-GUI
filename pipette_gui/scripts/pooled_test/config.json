@@ -1,0 +1,50 @@
+{
+    "scriptName": "Test Pooled Script",
+    "scriptType": "pooled",
+    "description": "Et script som h\u00e5ndterer b\u00e5de individuelle og poolede pr\u00f8ver fra journalsystemet",
+    "thumbnail": "",
+    "visualizationFile": "C:\\robot\\variables\\Pooled\\script_visual.png",
+    "targetFile": "C:\\robot\\selected_script.txt",
+    "targetValue": "POOLED_TEST",
+    "sampleCountFile": "C:\\robot\\variables\\Pooled\\sample_count.txt",
+    "sampleRange": {
+        "min": 1,
+        "max": 96
+    },
+    "boxGroups": [
+        {
+            "groupName": "Individuelle Pr\u00f8ver",
+            "groupType": "individual",
+            "shape": "rect",
+            "color": "#808080",
+            "maxBoxes": 2,
+            "startPositionFile": "C:\\robot\\variables\\Pooled\\arbeidsboks_start_pos.txt",
+            "initialStartPosition": 1,
+            "disabledWells": [],
+            "volume": {
+                "volumeFile": "C:\\robot\\variables\\Pooled\\arbeidsboks_volum.txt",
+                "defaultValue": 200,
+                "min": 0,
+                "max": 5000
+            }
+        },
+        {
+            "groupName": "Poolede Pr\u00f8ver",
+            "groupType": "pooled",
+            "shape": "rect",
+            "color": "#808080",
+            "maxBoxes": 1,
+            "startPositionFile": "C:\\robot\\variables\\Pooled\\biobankboks_start_pos.txt",
+            "initialStartPosition": 1,
+            "disabledWells": [],
+            "volume": {
+                "volumeFile": "C:\\robot\\variables\\Pooled\\biobankboks_volum.txt",
+                "defaultValue": 500,
+                "min": 0,
+                "max": 5000
+            }
+        }
+    ],
+    "userDefinedVariables": [],
+    "journalDataFile": "test_data.txt"
+}

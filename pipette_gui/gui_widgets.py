@@ -71,17 +71,34 @@ class WellPlateWidget(QWidget):
             bg_rect = self.rect().adjusted(20, 5, -20, -self.height() + 40)
             painter.fillRect(bg_rect, QColor("#f0f9ff"))
             painter.drawText(bg_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, display_text)
+        
         if self.is_interactive:
-            pen = QPen(QColor("#0078d4"), 4); pen.setStyle(Qt.PenStyle.SolidLine)
-            painter.setPen(pen); painter.drawRect(self.rect().adjusted(2, 2, -2, -2))
+            pen = QPen(QColor("#0078d4"), 4)
+            pen.setStyle(Qt.PenStyle.SolidLine)
+            painter.setPen(pen)
+            painter.drawRect(self.rect().adjusted(2, 2, -2, -2))
+        
         top_margin = 50 if self.show_title else 20
-        widget_width = self.width(); widget_height = self.height(); cell_width = (widget_width - 40) / self.cols; cell_height = (widget_height - top_margin - 20) / self.rows
-        active_sample_wells = set(); actual_start_pos = self.start_pos
+        widget_width = self.width()
+        widget_height = self.height()
+        cell_width = (widget_width - 40) / self.cols
+        cell_height = (widget_height - top_margin - 20) / self.rows
+        
+        active_sample_wells = set()
+        actual_start_pos = self.start_pos
+        
         if self.sample_count > 0:
-            while actual_start_pos in self.disabled_wells and actual_start_pos <= 96: actual_start_pos += 1
-            count = 0; current_pos = actual_start_pos
+            # Skip disabled wells at the start
+            while actual_start_pos in self.disabled_wells and actual_start_pos <= 96:
+                actual_start_pos += 1
+            
+            count = 0
+            current_pos = actual_start_pos
+            
             while count < self.sample_count and current_pos <= 96:
-                if current_pos not in self.disabled_wells: active_sample_wells.add(current_pos); count += 1
+                if current_pos not in self.disabled_wells:
+                    active_sample_wells.add(current_pos)
+                    count += 1
                 current_pos += 1
         small_font = QFont("Arial", 11, QFont.Bold)
         for row in range(self.rows):
