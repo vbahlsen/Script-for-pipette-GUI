@@ -17,6 +17,10 @@ generator to change their colours (not of the wells, only of the outlines and su
 This would mean a slightly more substantial outline around the wells and a fill colour, for example.
 Figure out how these boxes look from above for inspiration. 
 
+2.3 Bigger and more visible selectors
+We want the selecter buttons for user defined variables to be bigger, both for readability and 
+clickability.
+
 3. New functionality
 3.1 Another script class
 We're in need of another type of script, and a generator for it. 

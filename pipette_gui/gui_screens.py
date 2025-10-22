@@ -332,16 +332,51 @@ class ScriptDetailScreen(QWidget):
             if os.path.exists(full_path):
                 pixmap = QPixmap(str(full_path)); self.thumbnail_label.setPixmap(pixmap)
             else: self.thumbnail_label.setText("Bilde\nikke\nfunnet")
-        for udf_widget in self.udf_widgets: udf_widget["group"].deleteLater()
+        # Clear existing UDF widgets
+        for udf_widget in self.udf_widgets:
+            udf_widget["group"].deleteLater()
         self.udf_widgets.clear()
+        
+        # Get UDF list
         udf_list = self.script_data.get("userDefinedVariables", [])
+            
         for udf_data in udf_list:
             if udf_data and udf_data.get("question"):
-                group_box = QGroupBox(udf_data.get("question")); group_box.setFont(QFont("Arial", 18)); layout = QVBoxLayout(group_box); button_group = QButtonGroup(self)
+                question_text = udf_data.get("question")
+                # Add "required" indicator
+                required_text = f"{question_text} *"
+                group_box = QGroupBox(required_text)
+                group_box.setFont(QFont("Arial", 18)) 
+                layout = QVBoxLayout(group_box)
+                layout.setSpacing(10)  # Slightly more spacing between options
+                button_group = QButtonGroup(self)
+                
                 for i, option in enumerate(udf_data.get("options", [])):
                     if option.get("label"):
-                        radio = QRadioButton(option.get("label")); radio.setFont(QFont("Arial", 16)); layout.addWidget(radio); button_group.addButton(radio, i)
-                self.udf_main_layout.addWidget(group_box); self.udf_widgets.append({"group": group_box, "buttons": button_group, "data": udf_data})
+                        # Create a larger radio button with bigger font
+                        radio = QRadioButton(option.get("label"))
+                        radio.setFont(QFont("Arial", 16))  # Slightly bigger font
+                        radio.setMinimumHeight(40)  # Make buttons taller for better clickability
+                        
+                        # Set a slightly larger indicator size
+                        radio.setStyleSheet("""
+                            QRadioButton::indicator {
+                                width: 20px;
+                                height: 20px;
+                            }
+                        """)
+                        
+                        layout.addWidget(radio)
+                        button_group.addButton(radio, i)
+                        
+                        # Connect radio button to update button state when clicked
+                        radio.clicked.connect(self._update_button_state)
+                        
+                # Add to main layout
+                self.udf_main_layout.addWidget(group_box)
+                
+                # Store references
+                self.udf_widgets.append({"group": group_box, "buttons": button_group, "data": udf_data})
         self._update_all_plates()
         
         # Return success
@@ -397,6 +432,37 @@ class ScriptDetailScreen(QWidget):
     def finalize_new_start_pos(self, well_index):
         if self.active_group_for_editing:
             group = self.active_group_for_editing; group.group_data['currentStartPosition'] = well_index; group.update_displays(); self._update_all_plates(); self.active_group_for_editing = None
+            
+    def _check_udf_selections(self):
+        """Check if all user-defined variables have selections"""
+        # If there are no UDFs, return True
+        if not self.udf_widgets:
+            return True
+            
+        # Check each UDF widget to see if a selection has been made
+        for udf_widget in self.udf_widgets:
+            if udf_widget["buttons"].checkedId() == -1:  # No selection
+                return False
+        return True
+            
+    def _update_button_state(self):
+        """Update the state of the Start Pipetting button based on samples and UDFs"""
+        is_pooled = self.script_data.get("scriptType") == "pooled"
+        num_samples = int(self.samples_input or "0")
+        sample_mapping = None
+        
+        if is_pooled and hasattr(self, 'journal_data'):
+            sample_mapping = self.journal_data.get_sample_mapping()
+            
+        # Check if we have valid sample count
+        has_samples = num_samples > 0 or (is_pooled and sample_mapping is not None)
+        
+        # Check if all UDFs have selections
+        all_udfs_selected = self._check_udf_selections()
+        
+        # Enable button only if we have samples AND all UDFs are selected
+        self.start_button.setEnabled(has_samples and all_udfs_selected)
+            
     def _on_change_start_pos_clicked(self, group_widget):
         self._hide_keypad(); self.start_button.setEnabled(False); self.active_group_for_editing = group_widget; self.edit_plate_fullscreen.emit(group_widget)
     def _set_active_input(self, display_widget):
@@ -545,9 +611,8 @@ class ScriptDetailScreen(QWidget):
                     # Standard script just uses the sample count
                     group.update_plates(num_samples, start_pos, disabled)
             
-            # Enable start button if we have samples
-            has_samples = num_samples > 0 or (is_pooled and sample_mapping is not None)
-            self.start_button.setEnabled(has_samples)
+            # Update start button state based on samples and UDFs
+            self._update_button_state()
         except (ValueError, AttributeError) as e: 
             print(f"Kunne ikke oppdatere plater: {e}")
     def _on_start_pipetting(self):

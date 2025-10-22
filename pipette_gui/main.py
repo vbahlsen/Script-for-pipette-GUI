@@ -34,6 +34,19 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Pipetteringsrobot GUI")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.scripts_dir = BASE_DIR / "scripts"
+        
+        # Add a global stylesheet to make radio buttons more visible
+        self.setStyleSheet("""
+            QRadioButton {
+                min-height: 40px;
+                font-size: 16px;
+                padding: 5px;
+            }
+            QRadioButton::indicator {
+                width: 24px;
+                height: 24px;
+            }
+        """)
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
         self.selector_screen = ScriptSelectorScreen(base_dir=BASE_DIR)

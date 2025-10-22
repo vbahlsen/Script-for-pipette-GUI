@@ -45,6 +45,22 @@
             }
         }
     ],
-    "userDefinedVariables": [],
+    "userDefinedVariables": [
+        {
+            "question": "TESTSP\u00d8RSM\u00c5L",
+            "options": [
+                {
+                    "label": "TEST 1",
+                    "value": "1",
+                    "file": ""
+                },
+                {
+                    "label": "TEST 2",
+                    "value": "2",
+                    "file": ""
+                }
+            ]
+        }
+    ],
     "journalDataFile": "test_data.txt"
 }
