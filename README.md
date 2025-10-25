@@ -1,0 +1,1 @@
+Due to limitations of Tecan touch tools, this is ment to act as a touch friendly replacement UI for selecting pipetting scripts and inputing relevant parameters like start position. It reads/writes values (parameters) to txt files for evoware to use.
