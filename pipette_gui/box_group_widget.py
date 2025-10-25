@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget, QSizePolicy
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
 
@@ -18,20 +18,29 @@ class BoxGroupWidget(QFrame):
         self.plate_widgets = []
         self.sample_mapping = None
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        
+        # Set size policy to prevent overflow
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(300)
+        
         self._setup_ui()
         self.update_displays()
     
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(10)
+        
         name_label = QLabel(self.group_data.get("groupName", "Boksgruppe"))
-        name_label.setFont(QFont("Arial", 28, QFont.Bold))
+        name_label.setFont(QFont("Arial", 24, QFont.Bold))
         name_label.setAlignment(Qt.AlignCenter)
+        name_label.setWordWrap(True)
         
         # Add summary widget for pooled scripts
         self.summary_widget = BoxGroupSummaryWidget()
         self.summary_widget.hide()  # Hidden by default
         
         controls_layout = QVBoxLayout()
+        controls_layout.setSpacing(5)
         self._setup_controls(controls_layout)
 
         self.plates_container = QWidget()
@@ -43,23 +52,23 @@ class BoxGroupWidget(QFrame):
         main_layout.addWidget(self.plates_container, stretch=1)
 
     def _setup_controls(self, layout):
-        volume_layout = QHBoxLayout()
+        # Volume section - label above input
         volume_label = QLabel("Volum (µL):")
-        volume_label.setFont(QFont("Arial", 20))
-        self.volume_display = NumericDisplay()
-        volume_layout.addWidget(volume_label)
-        volume_layout.addWidget(self.volume_display)
-        volume_layout.addStretch(1)
+        volume_label.setFont(QFont("Arial", 18))
+        volume_label.setAlignment(Qt.AlignCenter)
         
-        button_layout = QHBoxLayout()
+        self.volume_display = NumericDisplay()
+        self.volume_display.setMaximumHeight(60)
+        
+        # Button section
         self.change_pos_button = QPushButton("Endre startposisjon")
-        self.change_pos_button.setFont(QFont("Arial", 20))
-        button_layout.addStretch(1)
-        button_layout.addWidget(self.change_pos_button)
-        button_layout.addStretch(1)
+        self.change_pos_button.setFont(QFont("Arial", 16))
+        self.change_pos_button.setMinimumHeight(50)
+        self.change_pos_button.setWordWrap(True)
 
-        layout.addLayout(volume_layout)
-        layout.addLayout(button_layout)
+        layout.addWidget(volume_label)
+        layout.addWidget(self.volume_display)
+        layout.addWidget(self.change_pos_button)
         
         self.volume_display.clicked.connect(lambda: self.volume_display_clicked.emit(self))
         self.change_pos_button.clicked.connect(lambda: self.change_start_pos_clicked.emit(self))

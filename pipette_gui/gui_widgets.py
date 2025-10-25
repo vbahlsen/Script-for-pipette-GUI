@@ -1,17 +1,17 @@
 # Filnavn: gui_widgets.py
 
 from PySide6.QtWidgets import QWidget, QPushButton, QGridLayout, QVBoxLayout, QLabel, QSizePolicy
-from PySide6.QtCore import Signal, Qt, QRect
+from PySide6.QtCore import Signal, Qt, QRect, QSize
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont, QPixmap
 
 class ThumbnailButton(QWidget):
     # ... (Denne klassen er uendret)
     clicked = Signal()
     def __init__(self, text, image_path, parent=None):
-        super().__init__(parent); self.setFixedSize(250, 200); main_layout = QVBoxLayout(self); main_layout.setContentsMargins(10, 10, 10, 10); self.image_label = QLabel(); self.image_label.setAlignment(Qt.AlignCenter); self.image_label.setScaledContents(True); pixmap = QPixmap(image_path)
+        super().__init__(parent); self.setMaximumSize(350, 220); self.setMinimumSize(200, 180); main_layout = QVBoxLayout(self); main_layout.setContentsMargins(10, 10, 10, 10); self.image_label = QLabel(); self.image_label.setAlignment(Qt.AlignCenter); self.image_label.setScaledContents(True); pixmap = QPixmap(image_path)
         if pixmap.isNull(): self.image_label.setText("Bilde\nikke funnet")
         else: self.image_label.setPixmap(pixmap)
-        self.text_label = QLabel(text); self.text_label.setFont(QFont("Arial", 16, QFont.Bold)); self.text_label.setAlignment(Qt.AlignCenter); self.text_label.setWordWrap(True); main_layout.addWidget(self.image_label, 1); main_layout.addWidget(self.text_label)
+        self.text_label = QLabel(text); self.text_label.setFont(QFont("Arial", 14, QFont.Bold)); self.text_label.setAlignment(Qt.AlignCenter); self.text_label.setWordWrap(True); main_layout.addWidget(self.image_label, 1); main_layout.addWidget(self.text_label)
         self.setStyleSheet("""ThumbnailButton { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 8px; } ThumbnailButton:hover { background-color: #aadeff; }""")
     def mousePressEvent(self, event):
         self.clicked.emit(); super().mousePressEvent(event)
@@ -33,6 +33,27 @@ class WellPlateWidget(QWidget):
         self.show_title = show_title
         if fixed_size:
             self.setFixedSize(520, 380)
+        else:
+            # For non-fixed size, set minimum size and size policy
+            self.setMinimumSize(240, 180)
+            self.setMaximumSize(520, 380)
+            size_policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            size_policy.setHeightForWidth(True)
+            self.setSizePolicy(size_policy)
+            
+    def sizeHint(self):
+        """Suggest optimal size maintaining aspect ratio"""
+        # Well plate is 12 cols x 8 rows, so aspect ratio is 3:2
+        return QSize(400, 267)  # Reduced from 520x380
+        
+    def hasHeightForWidth(self):
+        """Enable height-for-width layout"""
+        return True
+        
+    def heightForWidth(self, width):
+        """Maintain aspect ratio based on width"""
+        # Aspect ratio is 12:8 or 3:2
+        return int(width * (8 / 12))
     def index_to_coord(self, index):
         if not 1 <= index <= 96: return "?"
         row = (index - 1) % 8; col = (index - 1) // 8

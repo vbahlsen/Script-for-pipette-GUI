@@ -8,18 +8,21 @@ class BoxGroupSummaryWidget(QFrame):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         
         layout = QVBoxLayout(self)
+        layout.setSpacing(5)
         
         # Create labels with consistent styling
         self.title_label = QLabel()
-        self.title_label.setFont(QFont("Arial", 24, QFont.Bold))
+        self.title_label.setFont(QFont("Arial", 20, QFont.Bold))
         self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setWordWrap(True)
         
         self.count_label = QLabel()
-        self.count_label.setFont(QFont("Arial", 20))
+        self.count_label.setFont(QFont("Arial", 16))
         self.count_label.setAlignment(Qt.AlignCenter)
+        self.count_label.setWordWrap(True)
         
         self.details_label = QLabel()
-        self.details_label.setFont(QFont("Arial", 16))
+        self.details_label.setFont(QFont("Arial", 14))
         self.details_label.setAlignment(Qt.AlignLeft)
         self.details_label.setWordWrap(True)
         

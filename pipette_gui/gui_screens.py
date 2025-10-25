@@ -9,7 +9,7 @@ import shutil
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QLabel, QSpacerItem, QSizePolicy, QFrame, QScrollArea, 
                                QCheckBox, QFormLayout, QLineEdit, QComboBox, QMessageBox, 
-                               QTextEdit, QRadioButton, QButtonGroup, QGroupBox, QGridLayout)
+                               QTextEdit, QRadioButton, QButtonGroup, QGroupBox, QGridLayout, QScroller)
 from PySide6.QtCore import Signal, Qt, QPoint
 from PySide6.QtGui import QFont, QIntValidator, QPixmap, QPainter, QColor
 from PySide6.QtWidgets import QApplication
@@ -23,7 +23,12 @@ from journal_data import JournalData
 class ScriptSelectorScreen(QWidget):
     script_selected = Signal(dict); settings_clicked = Signal()
     def __init__(self, base_dir, parent=None):
-        super().__init__(parent); self.base_dir = base_dir; self.scripts_dir = base_dir / "scripts"; self.main_layout = QVBoxLayout(self); title = QLabel("Velg script"); title.setFont(QFont("Arial", 48, QFont.Bold)); self.main_layout.addWidget(title, alignment=Qt.AlignCenter); scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); self.button_container = QWidget(); self.button_layout = QGridLayout(self.button_container); self.button_layout.setSpacing(20); self.button_layout.setAlignment(Qt.AlignTop | Qt.AlignCenter); scroll_area.setWidget(self.button_container); self.main_layout.addWidget(scroll_area, 1); bottom_bar_layout = QHBoxLayout(); settings_button = QPushButton("⚙️"); settings_button.setFont(QFont("Arial", 30)); settings_button.setFixedSize(80, 80); settings_button.clicked.connect(self.settings_clicked.emit); bottom_bar_layout.addStretch(1); bottom_bar_layout.addWidget(settings_button); self.main_layout.addLayout(bottom_bar_layout)
+        super().__init__(parent); self.base_dir = base_dir; self.scripts_dir = base_dir / "scripts"; self.main_layout = QVBoxLayout(self); self.main_layout.setContentsMargins(10, 10, 10, 10); title = QLabel("Velg script"); title.setFont(QFont("Arial", 48, QFont.Bold)); self.main_layout.addWidget(title, alignment=Qt.AlignCenter); scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded); 
+        
+        # Enable touch scrolling for better touchscreen support
+        QScroller.grabGesture(scroll_area.viewport(), QScroller.ScrollerGestureType.LeftMouseButtonGesture)
+        
+        self.button_container = QWidget(); self.button_layout = QGridLayout(self.button_container); self.button_layout.setSpacing(15); self.button_layout.setContentsMargins(10, 10, 10, 10); self.button_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter); scroll_area.setWidget(self.button_container); self.main_layout.addWidget(scroll_area, 1); bottom_bar_layout = QHBoxLayout(); settings_button = QPushButton("⚙️"); settings_button.setFont(QFont("Arial", 30)); settings_button.setFixedSize(80, 80); settings_button.clicked.connect(self.settings_clicked.emit); bottom_bar_layout.addStretch(1); bottom_bar_layout.addWidget(settings_button); self.main_layout.addLayout(bottom_bar_layout)
     def clear_buttons(self):
         while self.button_layout.count():
             item = self.button_layout.takeAt(0)
@@ -43,7 +48,7 @@ class ScriptSelectorScreen(QWidget):
                     with open(config_path, 'r', encoding='utf-8') as f:
                         script_data = json.load(f); script_data['folder_name'] = dir_name; scripts_to_show.append(script_data)
                 except Exception as e: print(f"Kunne ikke laste {config_path}: {e}")
-        cols = 4
+        cols = 2  # Use 2 columns for vertical screens to avoid horizontal overflow
         for i, script_data in enumerate(scripts_to_show):
             row, col = divmod(i, cols); image_path = self.scripts_dir / script_data['folder_name'] / script_data.get('thumbnail', ''); button = ThumbnailButton(script_data['scriptName'], str(image_path)); button.clicked.connect(lambda data=script_data: self.script_selected.emit(data)); self.button_layout.addWidget(button, row, col)
 
@@ -59,24 +64,36 @@ class BoxGroupWidget(QFrame):
         self.plate_widgets = []
         self.sample_mapping = None  # Will store mapping for pooled scripts
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        
+        # Set size policy to prevent overflow
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(300)
+        
         self._setup_ui()
         self.update_displays()
     
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(8, 8, 8, 8)  # Add margins to prevent cutoff
+        
         name_label = QLabel(self.group_data.get("groupName", "Boksgruppe"))
-        name_label.setFont(QFont("Arial", 28, QFont.Bold))
+        name_label.setFont(QFont("Arial", 22, QFont.Bold))
         name_label.setAlignment(Qt.AlignCenter)
+        name_label.setWordWrap(True)
         
         # Add summary widget for pooled scripts
         self.summary_widget = BoxGroupSummaryWidget()
         self.summary_widget.hide()  # Hidden by default, shown only for pooled scripts
         
         controls_layout = QVBoxLayout()
+        controls_layout.setSpacing(5)
         self._setup_controls(controls_layout)
 
         self.plates_container = QWidget()
         self.plates_layout = QVBoxLayout(self.plates_container)
+        self.plates_layout.setContentsMargins(5, 5, 5, 5)  # Add margins around plates
+        self.plates_layout.setSpacing(5)
         
         main_layout.addWidget(name_label)
         main_layout.addWidget(self.summary_widget)
@@ -84,23 +101,22 @@ class BoxGroupWidget(QFrame):
         main_layout.addWidget(self.plates_container, stretch=1)
 
     def _setup_controls(self, layout):
-        volume_layout = QHBoxLayout()
+        # Volume section - label above input
         volume_label = QLabel("Volum (µL):")
-        volume_label.setFont(QFont("Arial", 20))
-        self.volume_display = NumericDisplay()
-        volume_layout.addWidget(volume_label)
-        volume_layout.addWidget(self.volume_display)
-        volume_layout.addStretch(1)
+        volume_label.setFont(QFont("Arial", 16))
+        volume_label.setAlignment(Qt.AlignCenter)
         
-        button_layout = QHBoxLayout()
+        self.volume_display = NumericDisplay()
+        self.volume_display.setMaximumHeight(60)
+        
+        # Button section
         self.change_pos_button = QPushButton("Endre startposisjon")
-        self.change_pos_button.setFont(QFont("Arial", 20))
-        button_layout.addStretch(1)
-        button_layout.addWidget(self.change_pos_button)
-        button_layout.addStretch(1)
+        self.change_pos_button.setFont(QFont("Arial", 14))
+        self.change_pos_button.setMinimumHeight(45)
 
-        layout.addLayout(volume_layout)
-        layout.addLayout(button_layout)
+        layout.addWidget(volume_label)
+        layout.addWidget(self.volume_display)
+        layout.addWidget(self.change_pos_button)
         
         self.volume_display.clicked.connect(lambda: self.volume_display_clicked.emit(self))
         self.change_pos_button.clicked.connect(lambda: self.change_start_pos_clicked.emit(self))
@@ -134,8 +150,9 @@ class BoxGroupWidget(QFrame):
 
             # Handle empty state
             if sample_count <= 0:
-                plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), show_title=True)
+                plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), fixed_size=False, show_title=True)
                 plate.set_state(start_pos=start_pos, sample_count=0, disabled_wells=disabled_wells, frame_color=frame_color)
+                # Don't set fixed size - let it scale with container
                 self.plates_layout.addWidget(plate)
                 self.plate_widgets.append(plate)
                 return
@@ -153,7 +170,7 @@ class BoxGroupWidget(QFrame):
                 break
 
             show_title = (i == 0)
-            plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), show_title=show_title)
+            plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), fixed_size=False, show_title=show_title)
 
             available_wells_on_this_plate = 0
             for well in range(current_pos_on_plate, 97):
@@ -179,6 +196,10 @@ class BoxGroupWidget(QFrame):
                 plate.set_state(start_pos=current_pos_on_plate, 
                               sample_count=samples_on_this_plate, 
                               disabled_wells=disabled_wells)
+            
+            # Don't set fixed size - let it scale with container
+            # plate.setMaximumWidth(450)  # Removed to allow proper scaling
+            
             self.plates_layout.addWidget(plate)
             self.plate_widgets.append(plate)
 
@@ -391,17 +412,18 @@ class ScriptDetailScreen(QWidget):
                 # Add "required" indicator
                 required_text = f"{question_text} *"
                 group_box = QGroupBox(required_text)
-                group_box.setFont(QFont("Arial", 18)) 
+                group_box.setFont(QFont("Arial", 16))
+                group_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
                 layout = QVBoxLayout(group_box)
-                layout.setSpacing(10)  # Slightly more spacing between options
+                layout.setSpacing(8)  # Slightly more spacing between options
                 button_group = QButtonGroup(self)
                 
                 for i, option in enumerate(udf_data.get("options", [])):
                     if option.get("label"):
                         # Create a larger radio button with bigger font
                         radio = QRadioButton(option.get("label"))
-                        radio.setFont(QFont("Arial", 16))  # Slightly bigger font
-                        radio.setMinimumHeight(40)  # Make buttons taller for better clickability
+                        radio.setFont(QFont("Arial", 14))
+                        radio.setMinimumHeight(35)
                         
                         # Set a slightly larger indicator size
                         radio.setStyleSheet("""
@@ -427,14 +449,29 @@ class ScriptDetailScreen(QWidget):
         # Return success
         return True
     def _setup_ui(self, main_layout):
-        self.main_layout = main_layout; main_layout.setContentsMargins(0,0,0,0); scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); scroll_area.setStyleSheet("QScrollArea { border: none; }"); self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 20)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); self.script_name_label = QLabel("Script Navn"); self.script_name_label.setFont(QFont("Arial", 32, QFont.Bold)); self.script_name_label.setAlignment(Qt.AlignCenter); self.thumbnail_label = QLabel(); self.thumbnail_label.setFixedSize(225, 150); self.thumbnail_label.setScaledContents(True); self.thumbnail_label.setAlignment(Qt.AlignCenter); self.thumbnail_label.setStyleSheet("border: 1px solid #ccc;"); self.description_label = QLabel("Beskrivelse her..."); self.description_label.setFont(QFont("Arial", 16)); self.description_label.setWordWrap(True); info_vbox = QVBoxLayout(); info_vbox.addWidget(self.description_label); info_vbox.addStretch(1); info_layout.addWidget(self.thumbnail_label); info_layout.addLayout(info_vbox); self.sample_range_label = QLabel("Gyldig antall: 1 - 96"); self.sample_range_label.setFont(QFont("Arial", 14, italic=True)); 
+        self.main_layout = main_layout; main_layout.setContentsMargins(0,0,0,0); scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); scroll_area.setStyleSheet("QScrollArea { border: none; }"); 
+        
+        # Enable touch scrolling for better touchscreen support
+        QScroller.grabGesture(scroll_area.viewport(), QScroller.ScrollerGestureType.LeftMouseButtonGesture)
+        
+        self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); content_layout.setContentsMargins(10, 10, 10, 10); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 18)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); self.script_name_label = QLabel("Script Navn"); self.script_name_label.setFont(QFont("Arial", 28, QFont.Bold)); self.script_name_label.setAlignment(Qt.AlignCenter); self.script_name_label.setWordWrap(True); self.thumbnail_label = QLabel(); self.thumbnail_label.setMaximumSize(180, 120); self.thumbnail_label.setScaledContents(True); self.thumbnail_label.setAlignment(Qt.AlignCenter); self.thumbnail_label.setStyleSheet("border: 1px solid #ccc;"); self.description_label = QLabel("Beskrivelse her..."); self.description_label.setFont(QFont("Arial", 14)); self.description_label.setWordWrap(True); info_vbox = QVBoxLayout(); info_vbox.addWidget(self.description_label); info_vbox.addStretch(1); info_layout.addWidget(self.thumbnail_label); info_layout.addLayout(info_vbox); self.sample_range_label = QLabel("Gyldig antall: 1 - 96"); self.sample_range_label.setFont(QFont("Arial", 12, italic=True)); 
         samples_layout = QHBoxLayout()
         samples_label = QLabel("Antall prøver:")
-        samples_label.setFont(QFont("Arial", 24))
+        samples_label.setFont(QFont("Arial", 20))
         self.samples_display = NumericDisplay()
         self.samples_display.setText("0")
+        self.samples_display.setMaximumWidth(200)
         samples_layout.addWidget(samples_label); samples_layout.addWidget(self.samples_display); samples_layout.addStretch(1); 
-        self.udf_main_layout = QVBoxLayout(); self.groups_container = QWidget(); self.groups_layout = QHBoxLayout(self.groups_container); self.start_button = QPushButton("START PIPETTERING"); self.start_button.setMinimumHeight(150); self.start_button.setFont(QFont("Arial", 40, QFont.Bold)); self.start_button.setStyleSheet("""QPushButton {background-color: #0078d4; color: white;} QPushButton:disabled {background-color: #5a5a5a; color: #999999;}"""); self.keypad = NumericKeypad(self); self.keypad.setFixedSize(450, 520); self.keypad.hide(); content_layout.addLayout(top_bar_layout); content_layout.addWidget(self.script_name_label); content_layout.addLayout(info_layout); content_layout.addLayout(samples_layout); content_layout.addWidget(self.sample_range_label); content_layout.addLayout(self.udf_main_layout); content_layout.addWidget(self.groups_container); content_layout.addStretch(1); main_layout.addWidget(scroll_area, 1); main_layout.addWidget(self.start_button)
+        self.udf_main_layout = QVBoxLayout()
+        
+        # Create a constrained container for box groups
+        self.groups_container = QWidget()
+        self.groups_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.groups_layout = QHBoxLayout(self.groups_container)
+        self.groups_layout.setSpacing(10)
+        self.groups_layout.setContentsMargins(5, 5, 5, 5)
+        
+        self.start_button = QPushButton("START PIPETTERING"); self.start_button.setMinimumHeight(120); self.start_button.setFont(QFont("Arial", 32, QFont.Bold)); self.start_button.setStyleSheet("""QPushButton {background-color: #0078d4; color: white;} QPushButton:disabled {background-color: #5a5a5a; color: #999999;}"""); self.keypad = NumericKeypad(self); self.keypad.setFixedSize(450, 520); self.keypad.hide(); content_layout.addLayout(top_bar_layout); content_layout.addWidget(self.script_name_label); content_layout.addLayout(info_layout); content_layout.addLayout(samples_layout); content_layout.addWidget(self.sample_range_label); content_layout.addLayout(self.udf_main_layout); content_layout.addWidget(self.groups_container); content_layout.addStretch(1); main_layout.addWidget(scroll_area, 1); main_layout.addWidget(self.start_button)
     def _connect_signals(self):
         self.back_button.clicked.connect(self.back_to_menu.emit); self.keypad.enter_pressed.connect(self._confirm_input); self.keypad.key_pressed.connect(self._on_key_pressed); self.samples_display.clicked.connect(lambda: self._set_active_input(self.samples_display)); self.start_button.clicked.connect(self._on_start_pipetting)
     def _confirm_input(self):

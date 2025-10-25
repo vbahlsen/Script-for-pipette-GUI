@@ -14,19 +14,55 @@ class FullScreenEditor(QWidget):
     well_selected = Signal(int)
     def __init__(self, parent=None):
         super().__init__(parent)
-        layout = QVBoxLayout(self)
-        self.plate_widget = WellPlateWidget(fixed_size=False)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+        
+        # Create a container widget to center the plate
+        self.container = QWidget()
+        self.container_layout = QVBoxLayout(self.container)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.plate_widget = WellPlateWidget(fixed_size=False, show_title=True)
         self.plate_widget.well_clicked.connect(self.well_selected.emit)
-        layout.addWidget(self.plate_widget)
+        
+        # Add stretch before and after to center vertically
+        self.container_layout.addStretch(1)
+        self.container_layout.addWidget(self.plate_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.container_layout.addStretch(1)
+        
+        self.main_layout.addWidget(self.container)
+        
+    def resizeEvent(self, event):
+        """Maintain aspect ratio when resizing"""
+        super().resizeEvent(event)
+        
+        # Calculate size based on screen width to maintain aspect ratio
+        # Well plate is 12 columns x 8 rows, so aspect ratio is 12:8 or 3:2
+        screen_width = self.width()
+        
+        # Use 90% of screen width for the plate
+        plate_width = int(screen_width * 0.9)
+        # Maintain 3:2 aspect ratio (12 cols : 8 rows)
+        plate_height = int(plate_width * (8 / 12))
+        
+        # Set fixed size to maintain proportions
+        self.plate_widget.setFixedSize(plate_width, plate_height)
+        
     def set_plate(self, shape, start_pos, sample_count, disabled_wells, frame_color=None):
         if self.plate_widget.shape != shape:
-            new_plate = WellPlateWidget(shape=shape, fixed_size=False)
-            self.layout().replaceWidget(self.plate_widget, new_plate)
+            new_plate = WellPlateWidget(shape=shape, fixed_size=False, show_title=True)
+            self.container_layout.replaceWidget(self.plate_widget, new_plate)
             self.plate_widget.deleteLater()
             self.plate_widget = new_plate
             self.plate_widget.well_clicked.connect(self.well_selected.emit)
+            
+            # Trigger resize to apply proper dimensions
+            self.resizeEvent(None)
+            
         self.plate_widget.set_state(start_pos, sample_count, disabled_wells, frame_color)
         self.plate_widget.set_interactive(True)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
