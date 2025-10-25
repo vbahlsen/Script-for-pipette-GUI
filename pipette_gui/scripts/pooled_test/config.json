@@ -17,7 +17,7 @@
             "groupType": "individual",
             "shape": "rect",
             "color": "#808080",
-            "maxBoxes": 2,
+            "maxBoxes": 3,
             "startPositionFile": "C:\\robot\\variables\\Pooled\\arbeidsboks_start_pos.txt",
             "initialStartPosition": 1,
             "disabledWells": [],
@@ -33,10 +33,19 @@
             "groupType": "pooled",
             "shape": "rect",
             "color": "#808080",
-            "maxBoxes": 1,
+            "maxBoxes": 3,
             "startPositionFile": "C:\\robot\\variables\\Pooled\\biobankboks_start_pos.txt",
             "initialStartPosition": 1,
-            "disabledWells": [],
+            "disabledWells": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                54,
+                55
+            ],
             "volume": {
                 "volumeFile": "C:\\robot\\variables\\Pooled\\biobankboks_volum.txt",
                 "defaultValue": 500,
@@ -62,5 +71,5 @@
             ]
         }
     ],
-    "journalDataFile": "test_data.txt"
+    "journalDataFile": "C:\\robot\\variables\\Pooled\\journal_file\\"
 }

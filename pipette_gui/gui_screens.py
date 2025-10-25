@@ -992,7 +992,12 @@ class UDFForm(QFrame):
 class GeneratorScreen(QWidget):
     back_to_settings = Signal()
     def __init__(self, scripts_dir, parent=None):
-        super().__init__(parent); self.scripts_dir = scripts_dir; self.editing_folder_name = None; self.box_group_forms = []; self.udf_forms = []
+        super().__init__(parent)
+        self.scripts_dir = scripts_dir
+        self.editing_folder_name = None
+        self.box_group_forms = []
+        self.udf_forms = []
+        self.is_loading_existing = False  # Flag to prevent automatic box group creation when loading existing scripts
         main_layout = QVBoxLayout(self); scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True); main_layout.addWidget(scroll_area); container = QWidget(); form_layout = QFormLayout(container); form_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows); scroll_area.setWidget(container); font = QFont("Arial", 16)
         # Create main input fields
         # Create script type selector
@@ -1097,10 +1102,28 @@ class GeneratorScreen(QWidget):
         self.sample_count_file_input.setVisible(not is_pooled)
         self.sample_range_widget.setVisible(not is_pooled)
         
-        # Clear any existing box groups
+        # Check if we're loading an existing script - if so, don't automatically add box groups
+        if self.is_loading_existing:
+            # Just update type selectors for existing box groups
+            for form in self.box_group_forms:
+                form.type_input.clear()
+                if is_pooled:
+                    form.type_input.addItems(["individual", "pooled"])
+                    # Try to preserve the existing type if possible
+                    current_type = form.get_data().get("groupType", "")
+                    if current_type in ["individual", "pooled"]:
+                        form.type_input.setCurrentText(current_type)
+                    else:
+                        form.type_input.setCurrentText("individual")
+                else:
+                    form.type_input.addItems(["standard"])
+                    form.type_input.setCurrentText("standard")
+            return
+        
+        # Clear any existing box groups for new scripts
         self._clear_forms()
         
-        # Add default box groups based on script type
+        # Add default box groups based on script type for new scripts
         if is_pooled:
             # Add individual samples group
             individual_group = {
@@ -1141,6 +1164,10 @@ class GeneratorScreen(QWidget):
                 form.type_input.setVisible(True)
 
     def reset_form(self):
+        # Make sure we're not in "loading existing" mode
+        self.is_loading_existing = False
+        
+        # Clear existing forms and reset fields
         self._clear_forms()
         self.editing_folder_name = None
         self.script_name_input.clear()
@@ -1157,10 +1184,15 @@ class GeneratorScreen(QWidget):
         self.journal_dir_input.setVisible(False)
         self._add_box_group_form()
     def load_data_for_edit(self, script_data):
+        # Set a flag to prevent automatic box group creation during type change
+        self.is_loading_existing = True
+        
+        # Clear existing forms
         self._clear_forms()
+        
+        # Set basic script data
         self.editing_folder_name = script_data.get('folder_name')
         self.script_name_input.setText(script_data.get("scriptName"))
-        self.script_type_input.setCurrentText(script_data.get("scriptType", "standard"))
         self.target_value_input.setText(script_data.get("targetValue", ""))
         self.description_input.setText(script_data.get("description", ""))
         self.thumbnail_input.setText(script_data.get("thumbnail", ""))
@@ -1169,14 +1201,24 @@ class GeneratorScreen(QWidget):
         self.visualization_file_input.setText(script_data.get("visualizationFile", "script_visual.png"))
         self.journal_dir_input.setText(script_data.get("journalDataFile", ""))
         
+        # Set script type (this will trigger _on_script_type_changed)
+        self.script_type_input.setCurrentText(script_data.get("scriptType", "standard"))
+        
+        # Set sample range
         sample_range = script_data.get("sampleRange", {})
         self.sample_min_input.setText(str(sample_range.get("min", 1)))
         self.sample_max_input.setText(str(sample_range.get("max", 96)))
         
+        # Add existing box groups from the script data
         for group_data in script_data.get("boxGroups", []): 
             self._add_box_group_form(group_data)
+            
+        # Add existing UDFs from the script data
         for udf_data in script_data.get("userDefinedVariables", []): 
             self._add_udf_form(udf_data)
+            
+        # Reset the flag after loading
+        self.is_loading_existing = False
     def _save_script(self):
         script_name = self.script_name_input.text().strip();
         if not script_name: QMessageBox.warning(self, "Feil", "Navn på script kan ikke være tomt."); return

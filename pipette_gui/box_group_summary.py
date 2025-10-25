@@ -44,7 +44,7 @@ class BoxGroupSummaryWidget(QFrame):
                         case_counts[case_id] = 0
                     case_counts[case_id] += 1
                 
-                details = "Fordeling per journalnummer:\n"
+                details = "Fordeling per journalsak:\n"
                 for case_id, count in case_counts.items():
                     details += f"• {case_id}: {count} prøver\n"
                 self.details_label.setText(details)
@@ -53,11 +53,11 @@ class BoxGroupSummaryWidget(QFrame):
                 self.details_label.setText("")
                 
         elif group_type == "pooled":
-            self.title_label.setText("Poolede Prøver")
+            self.title_label.setText("Samleprøver")
             if sample_data:
                 count = len(sample_data)
-                self.count_label.setText(f"Antall pooler: {count}")
-                self.details_label.setText("En poolet prøve per journalnummer")
+                self.count_label.setText(f"Antall samleprøver: {count}")
+                self.details_label.setText("En samleprøve per journalsak:")
             else:
-                self.count_label.setText("Ingen pooler")
+                self.count_label.setText("Ingen samleprøver")
                 self.details_label.setText("")
