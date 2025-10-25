@@ -209,6 +209,9 @@ class ScriptDetailScreen(QWidget):
         Load script data and prepare the UI.
         Returns True if loading was successful, False otherwise.
         """
+        import os
+        from pathlib import Path
+        
         self.keypad.hide()
         self.script_data = script_data
         
@@ -223,62 +226,104 @@ class ScriptDetailScreen(QWidget):
         sample_mapping = None
         if script_data.get("scriptType") == "pooled":
             script_dir = self.base_dir / "scripts" / script_data['folder_name']
-            journal_pattern = script_data.get('journalDataFile', '')
-            txt_files = list(script_dir.glob("*.txt"))
-            csv_files = list(script_dir.glob("*.csv"))
-            journal_files = txt_files + csv_files
+            journal_path = script_data.get('journalDataFile', '').strip()
             
-            if len(journal_files) > 1:
-                QMessageBox.warning(self, "Flere journalfiler", 
-                                  f"Flere lister i {script_dir}, rydd opp i disse og prøv igjen")
-                return False  # Indicate failure
-            elif len(journal_files) == 1:
-                if self.journal_data.load_file(str(journal_files[0])):
-                    sample_mapping = self.journal_data.get_sample_mapping()
-                    # Set up display for pooled scripts
-                    self.samples_display.setEnabled(False)
+            # Determine the actual file path
+            journal_file_path = None
+            
+            if journal_path:
+                # Remove trailing slashes/backslashes
+                journal_path = journal_path.rstrip('/\\')
+                
+                # Check if it's a directory or file
+                if os.path.isdir(journal_path):
+                    # It's a directory - search for files in it
+                    search_dir = Path(journal_path)
+                    txt_files = list(search_dir.glob("*.txt"))
+                    csv_files = list(search_dir.glob("*.csv"))
+                    journal_files = txt_files + csv_files
                     
-                    # Get sample counts
-                    individual_count = len(sample_mapping["individual"])
-                    pool_count = len(sample_mapping["pooled"])
-                    self.samples_display.setText(str(individual_count))
-                    
-                    # Create sample count label if it doesn't exist
-                    if not hasattr(self, 'pooled_info_label'):
-                        self.pooled_info_label = QLabel()
-                        self.pooled_info_label.setFont(QFont("Arial", 16))
-                        index = self.main_layout.indexOf(self.sample_range_label)
-                        self.main_layout.insertWidget(index + 1, self.pooled_info_label)
-                    
-                    # Update pooled sample information
-                    start_id = min(g["case_id"] for g in sample_mapping["individual"])
-                    end_id = max(g["case_id"] for g in sample_mapping["individual"])
-                    self.pooled_info_label.setText(
-                        f"Antall journalsaker: {pool_count}\n"
-                        f"Første og siste journalsak: {start_id} til {end_id}")
-                    self.pooled_info_label.show()
+                    if len(journal_files) > 1:
+                        QMessageBox.warning(self, "Flere journalfiler", 
+                                          f"Flere lister i {search_dir}, rydd opp i disse og prøv igjen")
+                        return False
+                    elif len(journal_files) == 1:
+                        journal_file_path = str(journal_files[0])
+                elif os.path.isfile(journal_path):
+                    # It's a file - use it directly
+                    journal_file_path = journal_path
                 else:
-                    if hasattr(self, 'pooled_info_label'):
-                        self.pooled_info_label.hide()
-                    
-                    # Show summary of journal data
-                    start_id = min(g["case_id"] for g in sample_mapping["individual"])
-                    end_id = max(g["case_id"] for g in sample_mapping["individual"])
-                    sample_count = len(sample_mapping["individual"])
-                    pool_count = len(sample_mapping["pooled"])
-                    
-                    info = (f"Antall prøver: {sample_count}\n"
-                           f"Antall samleprøver: {pool_count}\n"
-                           f"Saker: {start_id} til {end_id}")
-                    self.description_label.setText(
-                        self.script_data.get("description", "") + "\n\n" + info)
+                    # Path doesn't exist - try as relative path
+                    potential_path = script_dir / journal_path
+                    if potential_path.is_file():
+                        journal_file_path = str(potential_path)
+                    elif potential_path.is_dir():
+                        # It's a relative directory
+                        txt_files = list(potential_path.glob("*.txt"))
+                        csv_files = list(potential_path.glob("*.csv"))
+                        journal_files = txt_files + csv_files
+                        
+                        if len(journal_files) > 1:
+                            QMessageBox.warning(self, "Flere journalfiler", 
+                                              f"Flere lister i {potential_path}, rydd opp i disse og prøv igjen")
+                            return False
+                        elif len(journal_files) == 1:
+                            journal_file_path = str(journal_files[0])
+            
+            # If still no file found, search in script directory as fallback
+            if not journal_file_path:
+                txt_files = list(script_dir.glob("*.txt"))
+                csv_files = list(script_dir.glob("*.csv"))
+                journal_files = txt_files + csv_files
+                
+                if len(journal_files) > 1:
+                    QMessageBox.warning(self, "Flere journalfiler", 
+                                      f"Flere lister i {script_dir}, rydd opp i disse og prøv igjen")
+                    return False
+                elif len(journal_files) == 1:
+                    journal_file_path = str(journal_files[0])
+                else:
+                    QMessageBox.warning(self, "Mangler journalfil", 
+                                      f"Ingen journalfiler funnet")
+                    return False
+            
+            # Load the journal file
+            if journal_file_path and self.journal_data.load_file(journal_file_path):
+                sample_mapping = self.journal_data.get_sample_mapping()
+                # Set up display for pooled scripts
+                self.samples_display.setEnabled(False)
+                
+                # Get sample counts
+                individual_count = len(sample_mapping["individual"])
+                pool_count = len(sample_mapping["pooled"])
+                self.samples_display.setText(str(individual_count))
+                
+                # Create sample count label if it doesn't exist
+                if not hasattr(self, 'pooled_info_label'):
+                    self.pooled_info_label = QLabel()
+                    self.pooled_info_label.setFont(QFont("Arial", 16))
+                    index = self.main_layout.indexOf(self.sample_range_label)
+                    self.main_layout.insertWidget(index + 1, self.pooled_info_label)
+                
+                # Update pooled sample information - get first and last from ordered list
+                first_case = sample_mapping["individual"][0]["case_id"] if sample_mapping["individual"] else ""
+                last_case = sample_mapping["individual"][-1]["case_id"] if sample_mapping["individual"] else ""
+                
+                self.pooled_info_label.setText(
+                    f"Antall journalsaker: {pool_count}\n"
+                    f"Første og siste journalsak: {first_case} til {last_case}")
+                self.pooled_info_label.show()
             else:
-                QMessageBox.warning(self, "Mangler journalfil", 
-                                  f"Ingen journalfiler funnet i {script_dir}")
-                return False  # Indicate failure
+                QMessageBox.warning(self, "Kunne ikke laste journalfil", 
+                                  f"Feil ved lasting av journalfil")
+                return False
         else:
             # Enable sample count input for standard scripts
             self.samples_display.setEnabled(True)
+            
+            # Hide pooled info label for standard scripts
+            if hasattr(self, 'pooled_info_label'):
+                self.pooled_info_label.hide()
         
         # Create box group widgets
         for group_data in self.script_data.get("boxGroups", []):

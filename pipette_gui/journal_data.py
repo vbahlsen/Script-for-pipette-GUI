@@ -1,9 +1,9 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import csv
 
 class JournalData:
     def __init__(self):
-        self.cases = defaultdict(list)
+        self.cases = OrderedDict()  # Use OrderedDict to preserve order
         self.total_samples = 0
         self.total_cases = 0
     
@@ -23,8 +23,10 @@ class JournalData:
                 
             print(f"Journal data loaded: {len(lines)} entries")
             
-            # Group samples by case ID
+            # Group samples by case ID, preserving order of first appearance
             for sample_id in lines:
+                if sample_id not in self.cases:
+                    self.cases[sample_id] = []
                 self.cases[sample_id].append(len(self.cases[sample_id]) + 1)
             
             self.total_cases = len(self.cases)
