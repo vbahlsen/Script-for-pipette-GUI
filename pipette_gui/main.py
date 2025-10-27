@@ -174,5 +174,19 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
+    
+    # Select which monitor to use (0 = primary, 1 = secondary, etc.)
+    screens = app.screens()
+    monitor_index = 1  # Change this to 1 for second monitor, 2 for third, etc.
+    
+    if monitor_index < len(screens):
+        target_screen = screens[monitor_index]
+        window.setGeometry(target_screen.geometry())
+    
     window.showFullScreen()
+    
+    # Force focus and activation on the correct monitor
+    window.activateWindow()
+    window.raise_()
+    
     sys.exit(app.exec())
