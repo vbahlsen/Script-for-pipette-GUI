@@ -71,16 +71,106 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.scripts_dir = BASE_DIR / "scripts"
         
-        # Add a global stylesheet to make radio buttons more visible
+        # Add a global stylesheet for consistent dark theme across all computers
         self.setStyleSheet("""
+            QMainWindow, QWidget {
+                background-color: #2b2b2b;
+                color: #e0e0e0;
+            }
+            QLabel {
+                color: #e0e0e0;
+                background-color: transparent;
+            }
+            QPushButton {
+                background-color: #3d3d3d;
+                color: #e0e0e0;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 8px;
+                min-height: 40px;
+            }
+            QPushButton:hover {
+                background-color: #4d4d4d;
+                border: 1px solid #777777;
+            }
+            QPushButton:pressed {
+                background-color: #2d2d2d;
+            }
+            QLineEdit, QSpinBox, QTextEdit {
+                background-color: white;
+                color: black;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 5px;
+                min-height: 35px;
+            }
+            QScrollArea {
+                background-color: #2b2b2b;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background-color: #2b2b2b;
+                width: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #555555;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #666666;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
             QRadioButton {
                 min-height: 40px;
                 font-size: 16px;
                 padding: 5px;
+                color: #e0e0e0;
             }
             QRadioButton::indicator {
                 width: 24px;
                 height: 24px;
+                border: 2px solid #777777;
+                border-radius: 12px;
+                background-color: #1d1d1d;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #0078d4;
+                border: 8px solid #0078d4;
+            }
+            QRadioButton::indicator:checked::after {
+                content: "";
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background-color: white;
+            }
+            QComboBox {
+                background-color: white;
+                color: black;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 5px;
+                min-height: 35px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid black;
+                margin-right: 5px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: black;
+                selection-background-color: #0078d4;
+                selection-color: white;
             }
         """)
         self.stacked_widget = QStackedWidget()
