@@ -600,8 +600,7 @@ class ScriptDetailScreen(QWidget):
         
         # Show and position keypad
         global_pos = self.active_input_display.mapToGlobal(QPoint(0, self.active_input_display.height()))
-        local_pos = self.mapFromGlobal(global_pos)
-        self.keypad.move(local_pos.x(), local_pos.y() + 5)
+        self.keypad.move(global_pos.x(), global_pos.y() + 5)
         self.keypad.show()
         self.keypad.raise_()
     def _on_volume_display_clicked(self, group_widget):
