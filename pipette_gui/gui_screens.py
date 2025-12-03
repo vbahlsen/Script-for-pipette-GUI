@@ -842,6 +842,28 @@ class ScriptDetailScreen(QWidget):
                             print(f"  WARNING: Could not create directory for {udf_file}")
                         print(f"  UDF written successfully")
             
+            # Save this script as the last run script in settings.json
+            try:
+                settings_path = self.base_dir / "settings.json"
+                settings = {}
+                if settings_path.exists():
+                    with open(settings_path, 'r') as f:
+                        try:
+                            settings = json.load(f)
+                        except json.JSONDecodeError:
+                            pass
+                
+                # Construct config path
+                if 'folder_name' in self.script_data:
+                    config_path = self.base_dir / "scripts" / self.script_data['folder_name'] / "config.json"
+                    settings['last_script_config'] = str(config_path)
+                    
+                    with open(settings_path, 'w') as f:
+                        json.dump(settings, f, indent=4)
+                        print(f"Saved last run script config to settings: {config_path}")
+            except Exception as e:
+                print(f"Could not save last run script setting: {e}")
+            
             print("All files written successfully!")
             print("Configuration saved. Closing GUI.")
             QApplication.instance().quit()
@@ -930,6 +952,7 @@ class BoxGroupForm(QFrame):
         
         # Initialize all input fields
         self.group_name_input = QLineEdit()
+        self.labware_name_input = QLineEdit()  # New field for Labware Name
         self.shape_input = QComboBox()
         self.shape_input.addItems(["circle", "rect"])
         self.max_boxes_input = QLineEdit("1")
@@ -968,7 +991,7 @@ class BoxGroupForm(QFrame):
         remove_button.setStyleSheet("color: red;")
         remove_button.clicked.connect(lambda: self.remove_me.emit(self))
         # Set font for all widgets
-        for w in [self.group_name_input, self.shape_input, self.max_boxes_input, 
+        for w in [self.group_name_input, self.labware_name_input, self.shape_input, self.max_boxes_input, 
                  self.start_pos_input, self.disabled_wells_input, self.vol_default_input, 
                  self.start_pos_file_input, self.volume_file_input, self.color_input, remove_button]:
             w.setFont(font)
@@ -976,6 +999,7 @@ class BoxGroupForm(QFrame):
         # Add rows to form
         layout.addRow(remove_button)
         layout.addRow("Gruppenavn:", self.group_name_input)
+        layout.addRow("Labware Navn (for QC):", self.labware_name_input)
         layout.addRow("Type:", self.type_input)
         layout.addRow("Brønnform:", self.shape_input)
         layout.addRow("Boksens farge:", self.color_input)  # New color selector
@@ -992,6 +1016,7 @@ class BoxGroupForm(QFrame):
             return None
         return {
             "groupName": self.group_name_input.text() or "Boks Gruppe",
+            "labwareName": self.labware_name_input.text(),
             "groupType": self.type_input.currentText(),
             "shape": self.shape_input.currentText(),
             "color": self.color_options[self.color_input.currentText()],
@@ -1009,6 +1034,7 @@ class BoxGroupForm(QFrame):
         
     def set_data(self, data):
         self.group_name_input.setText(data.get("groupName", ""))
+        self.labware_name_input.setText(data.get("labwareName", ""))
         
         # Only set type if it's in the available items
         requested_type = data.get("groupType", "standard")
@@ -1107,6 +1133,10 @@ class GeneratorScreen(QWidget):
         self.journal_dir_input = QLineEdit()
         self.journal_dir_input.setPlaceholderText("Eksempel: test_data.txt")
         
+        # Create source layout input
+        self.source_layout_input = QLineEdit("8x12")
+        self.source_layout_input.setPlaceholderText("F.eks. 8x12 eller 4x6")
+        
         # Create box groups layout
         self.box_groups_layout = QVBoxLayout()
         
@@ -1115,7 +1145,7 @@ class GeneratorScreen(QWidget):
         
         for w in [self.script_name_input, self.target_value_input, self.description_input, self.thumbnail_input, 
                  self.sample_min_input, self.sample_max_input, self.target_file_input, self.sample_count_file_input, 
-                 self.visualization_file_input, self.script_type_input, self.journal_dir_input]: w.setFont(font)
+                 self.visualization_file_input, self.script_type_input, self.journal_dir_input, self.source_layout_input]: w.setFont(font)
         # General info section
         form_layout.addRow(QLabel("<h3>Generell Info</h3>"))
         form_layout.addRow("Navn på script:", self.script_name_input)
@@ -1123,6 +1153,7 @@ class GeneratorScreen(QWidget):
         form_layout.addRow("Verdi for robot:", self.target_value_input)
         form_layout.addRow("Beskrivelse:", self.description_input)
         form_layout.addRow("Filnavn for thumbnail:", self.thumbnail_input)
+        form_layout.addRow("Kilde-layout (RxC):", self.source_layout_input)
         
         # Sample configuration section
         form_layout.addRow("Antall prøver (min-maks):", self.sample_range_widget)
@@ -1263,6 +1294,7 @@ class GeneratorScreen(QWidget):
         self.visualization_file_input.setText("script_visual.png")
         self.journal_dir_input.clear()
         self.journal_dir_input.setVisible(False)
+        self.source_layout_input.setText("8x12")
         self._add_box_group_form()
     def load_data_for_edit(self, script_data):
         # Set a flag to prevent automatic box group creation during type change
@@ -1281,6 +1313,7 @@ class GeneratorScreen(QWidget):
         self.sample_count_file_input.setText(script_data.get("sampleCountFile", ""))
         self.visualization_file_input.setText(script_data.get("visualizationFile", "script_visual.png"))
         self.journal_dir_input.setText(script_data.get("journalDataFile", ""))
+        self.source_layout_input.setText(script_data.get("sourceLayout", "8x12"))
         
         # Set script type (this will trigger _on_script_type_changed)
         self.script_type_input.setCurrentText(script_data.get("scriptType", "standard"))
@@ -1323,6 +1356,7 @@ class GeneratorScreen(QWidget):
                 "min": int(self.sample_min_input.text() or 1),
                 "max": int(self.sample_max_input.text() or 96)
             },
+            "sourceLayout": self.source_layout_input.text(),
             "boxGroups": box_groups_data,
             "userDefinedVariables": udf_data
         }

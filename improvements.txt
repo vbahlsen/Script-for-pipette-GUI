@@ -68,7 +68,70 @@ pooled samples, "Samleprøve-boks", in the box-group specification part of the g
 need to specify our directory for the journal system export (folder, not file). Early in the spec.
 
 3.2 Post script presentation
-TO BE SPECIFIED FURTHER. 
 We're going to add a new post pipetting quality assurance visualisation, which makes graphical
-presentations of clot errors by looking at the pipetting programs log file. 
- 
+presentations of clot errors/detection errors by looking at the pipetting programs log files.
+
+A script will export any number of log files, dependent on the amount of labware defined in a 
+given pipetting script. I've specified these to be .csv files, but their format is otherwise
+unchangable so we have to work with how they are currently. Each csv contains 1 header row,
+as well as a second row containing info on the parent labware. The interesting info in this
+second row is in SRCRack (the name of the labware) and "SiteOnGrid" (vertical position). 
+Each consecutive row will
+represent 1 tube/position in the labware, with pipetting a pipetting operation having taken place 
+as long as there's a value in the "Volume" column. If a clot error or detection error has
+taken place in this pipetting operation, this is reported in the "Error" column as any value
+except 0. The well position in the labware we pipette TO is given as an integer in the 
+"Position" column, and is typically out of 96. We should also support 48/24 formats in this.
+We have already established a key for position to coordinate (1=A1, 10=B2, etc...) for other
+use in the script, it will be the same here (48 pos labware goes A1-H6, 24 pos goes A1-D6).
+The "well" position which we pipette FROM in an operation is given in the column "SRCPos". 
+The well/tube layout for the tubes we pipette FROM should be determined on a script by script
+basis, where we specify X*Y. We specify a directory in the settings of our main app where these
+reports are found. The script looks at all .csv that are no more than 3 minutes old (implement
+this feature but disable it for testing purposes) and assumes they are of importance. Filter
+out any files without values in Volume from row 3 and onwards, as they didnt have pipetting
+operations in this particular execution. 
+
+How I want this to work: a .py file separate from main.py is used to launch the post script
+presentation. Depending on the pipetting script that has been launched and has progressed
+(we can use the script-launcher variable to detirmine that, for example), a presentation of 
+our completed pipetting process and errors will be visualised in an interactive way.
+Each report file with at least one pipetting operation (value in Volume from row 3 onwards)
+will be visualized as a analysis box/plate in the same way as the script-chooser visualizes. 
+We will have to introduce a new infotag for the boxgroups in the generator, "Labware name",
+to connect the boxgroup to the correct report. I'll input a keyword there which will be 
+searched for in the 2nd row of each report (entire keyword anywhere in row). 
+The user is presented with the visualisation
+of all our boxes in use, populated with data from the reports. All wells that have a value 
+in Volume are highlighted as green, with previously filled wells being yellow like before. 
+Any wells that have a Volume value as well as an Error value different from 0, will be 
+highlighted in red. When I click a box, it will enlarge to fill the screen horizontally. 
+Below the box visualisation, a visualisation of the origin tubes will appear according to 
+the SRCPos values in the files. Only the tubes present in the pipetting process are 
+visualised, not the maximum possible in a given script. These tubes will have the same
+color coding as the target wells green for no errors and red for errors. We want only the 
+tubes pipetted to the currently targeted box/plate to be green/red, the tubes in the other
+boxes/plates in a script execution are visualised, but gray. Note that a origin tube will
+often appear in two different files, and may have no errors in one and an error in another.
+With our approach with looking at one box at a time, it shouldnt matter much, but make 
+sure that you dont show errors from one box when controlling another.
+Note that pooled samples can have several origin tubes for the same target position, make
+sure there's no issues with this. Seems straight forward.
+
+I shall now be able to click any well/tube that is green or red in the origin or target, 
+and that tube/well shall start to pulse in its colour in boxes with a solid outline (orange),
+along with its paired origin or target.
+Whenever I want I can click another well and this well and its "partner" changes position.
+Both well coordinates should be given in text as well below the visualizations (origin tube
+first, thereafter target well). The name of the boxgroup (from config) followed by its GridPos (nr.) is 
+always visible above it. There is a back button present in the top left corner that takes
+us back to all the boxes/plates again, so we can go onto the next box that needs controlling.
+We have a header that says: "Pipettering fullført" and a subheader that says 
+"Kontroller boks/plate ved å trykke på den. Trykk deretter på en brønn/et rør for å se 
+opphav eller mål" We also want a legend for the visualisation, where each well type is shown
+and explained (green= "Ingen error", red="Clot- eller detection error")
+As with the main app, there should be a red cross in the upper right corner to exit the app.
+There's also bottom button that says "Kontroll fullført, avslutt" that exits the app, with 
+identical styling to our "Start pipetterin" button from the main app.
+All other considerations from the main app is still important: its a touch interface,
+it must run in the foreground, be scrollable, etc...

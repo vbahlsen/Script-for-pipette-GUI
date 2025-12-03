@@ -29,7 +29,7 @@ class WellPlateWidget(QWidget):
         self.is_interactive = False
         self.temp_selected_well = None
         self.frame_color = "#808080"  # Default gray
-        self.row_map = {i: chr(ord('A') + i) for i in range(self.rows)}
+        self.row_map = self._generate_row_map()
         self.show_title = show_title
         if fixed_size:
             self.setFixedSize(520, 380)
@@ -41,6 +41,24 @@ class WellPlateWidget(QWidget):
             size_policy.setHeightForWidth(True)
             self.setSizePolicy(size_policy)
             
+    def _generate_row_map(self):
+        """Generate row labels (A, B, ... Z, AA, AB, ...)"""
+        row_map = {}
+        for i in range(self.rows):
+            label = ""
+            n = i
+            while n >= 0:
+                label = chr(ord('A') + (n % 26)) + label
+                n = (n // 26) - 1
+            row_map[i] = label
+        return row_map
+
+    def set_dimensions(self, rows, cols):
+        self.rows = rows
+        self.cols = cols
+        self.row_map = self._generate_row_map()
+        self.update()
+
     def sizeHint(self):
         """Suggest optimal size maintaining aspect ratio"""
         # Well plate is 12 cols x 8 rows, so aspect ratio is 3:2
@@ -55,9 +73,15 @@ class WellPlateWidget(QWidget):
         # Aspect ratio is 12:8 or 3:2
         return int(width * (8 / 12))
     def index_to_coord(self, index):
-        if not 1 <= index <= 96: return "?"
-        row = (index - 1) % 8; col = (index - 1) // 8
-        return f"{chr(ord('A') + row)}{col + 1}"
+        if not 1 <= index <= (self.rows * self.cols): return "?"
+        # Use self.rows for correct row calculation (Column-major order assumption: A1, B1, C1...)
+        # If index goes down columns first:
+        row = (index - 1) % self.rows
+        col = (index - 1) // self.rows
+        
+        # If row_map has the label, use it, otherwise fallback
+        row_label = self.row_map.get(row, "?")
+        return f"{row_label}{col + 1}"
     def set_state(self, start_pos, sample_count, disabled_wells, frame_color=None):
         self.start_pos = start_pos
         self.sample_count = sample_count

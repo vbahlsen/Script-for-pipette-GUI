@@ -11,9 +11,11 @@
         "min": 1,
         "max": 96
     },
+    "sourceLayout": "16x6",
     "boxGroups": [
         {
             "groupName": "Biobankboks",
+            "labwareName": "biobank",
             "groupType": "standard",
             "shape": "circle",
             "color": "#000000",
@@ -30,6 +32,7 @@
         },
         {
             "groupName": "Arbeidsboks",
+            "labwareName": "work",
             "groupType": "standard",
             "shape": "rect",
             "color": "#0000FF",

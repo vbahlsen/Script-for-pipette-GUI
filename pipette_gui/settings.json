@@ -1,3 +1,5 @@
 {
-    "inactive_scripts": []
-  }
+    "inactive_scripts": [],
+    "reports_dir": "C:/Users/vbahl/OneDrive/Dokumenter/VScode/Script for pipette GUI/test_reports/standard",
+    "last_script_config": "C:\\Users\\vbahl\\OneDrive\\Dokumenter\\VScode\\Script for pipette GUI\\pipette_gui\\scripts\\ok_m\u00e6di\\config.json"
+}
