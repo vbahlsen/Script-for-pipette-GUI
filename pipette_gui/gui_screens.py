@@ -9,7 +9,7 @@ import shutil
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QLabel, QSpacerItem, QSizePolicy, QFrame, QScrollArea, 
                                QCheckBox, QFormLayout, QLineEdit, QComboBox, QMessageBox, 
-                               QTextEdit, QRadioButton, QButtonGroup, QGroupBox, QGridLayout, QScroller)
+                               QTextEdit, QRadioButton, QButtonGroup, QGroupBox, QGridLayout, QScroller, QFileDialog)
 from PySide6.QtCore import Signal, Qt, QPoint
 from PySide6.QtGui import QFont, QIntValidator, QPixmap, QPainter, QColor
 from PySide6.QtWidgets import QApplication
@@ -19,6 +19,52 @@ from custom_widgets import NumericDisplay
 from box_group_summary import BoxGroupSummaryWidget
 from box_group_widget import BoxGroupWidget
 from journal_data import JournalData
+
+
+def _initial_dir_from_path(path_text: str) -> str:
+    path_text = (path_text or "").strip()
+    if not path_text:
+        return ""
+    if os.path.isdir(path_text):
+        return path_text
+    parent = os.path.dirname(path_text)
+    return parent if os.path.isdir(parent) else ""
+
+
+def make_path_picker(parent: QWidget, line_edit: QLineEdit, *,
+                     mode: str = "open",
+                     caption: str = "Velg fil",
+                     file_filter: str = "Alle filer (*)") -> QWidget:
+    """Wrap a QLineEdit with a browse button on the right."""
+    container = QWidget(parent)
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(8)
+
+    btn = QPushButton("📂", container)
+    btn.setToolTip(caption)
+    btn.setFixedSize(48, 48)
+
+    layout.addWidget(line_edit, 1)
+    layout.addWidget(btn, 0)
+
+    def _browse():
+        start_dir = _initial_dir_from_path(line_edit.text())
+        if mode == "dir":
+            selected = QFileDialog.getExistingDirectory(parent, caption, start_dir)
+            if selected:
+                line_edit.setText(selected)
+            return
+
+        if mode == "save":
+            selected, _ = QFileDialog.getSaveFileName(parent, caption, line_edit.text() or start_dir, file_filter)
+        else:
+            selected, _ = QFileDialog.getOpenFileName(parent, caption, line_edit.text() or start_dir, file_filter)
+        if selected:
+            line_edit.setText(selected)
+
+    btn.clicked.connect(_browse)
+    return container
 
 class ScriptSelectorScreen(QWidget):
     script_selected = Signal(dict); settings_clicked = Signal()
@@ -454,7 +500,7 @@ class ScriptDetailScreen(QWidget):
         # Enable touch scrolling for better touchscreen support
         QScroller.grabGesture(scroll_area.viewport(), QScroller.ScrollerGestureType.LeftMouseButtonGesture)
         
-        self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); content_layout.setContentsMargins(10, 10, 10, 10); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 18)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); self.script_name_label = QLabel("Script Navn"); self.script_name_label.setFont(QFont("Arial", 28, QFont.Bold)); self.script_name_label.setAlignment(Qt.AlignCenter); self.script_name_label.setWordWrap(True); self.thumbnail_label = QLabel(); self.thumbnail_label.setMaximumSize(180, 120); self.thumbnail_label.setScaledContents(True); self.thumbnail_label.setAlignment(Qt.AlignCenter); self.thumbnail_label.setStyleSheet("border: 1px solid #ccc;"); self.description_label = QLabel("Beskrivelse her..."); self.description_label.setFont(QFont("Arial", 14)); self.description_label.setWordWrap(True); info_vbox = QVBoxLayout(); info_vbox.addWidget(self.description_label); info_vbox.addStretch(1); info_layout.addWidget(self.thumbnail_label); info_layout.addLayout(info_vbox); self.sample_range_label = QLabel("Gyldig antall: 1 - 96"); self.sample_range_label.setFont(QFont("Arial", 12, italic=True)); 
+        self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); content_layout.setContentsMargins(10, 10, 10, 10); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 18)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); self.script_name_label = QLabel("Script Navn"); self.script_name_label.setFont(QFont("Arial", 28, QFont.Bold)); self.script_name_label.setAlignment(Qt.AlignCenter); self.script_name_label.setWordWrap(True); self.thumbnail_label = QLabel(); self.thumbnail_label.setMaximumSize(480, 340); self.thumbnail_label.setScaledContents(True); self.thumbnail_label.setAlignment(Qt.AlignCenter); self.thumbnail_label.setStyleSheet("border: 1px solid #ccc;"); self.description_label = QLabel("Beskrivelse her..."); self.description_label.setFont(QFont("Arial", 14)); self.description_label.setWordWrap(True); info_vbox = QVBoxLayout(); info_vbox.addWidget(self.description_label); info_vbox.addStretch(1); info_layout.addWidget(self.thumbnail_label); info_layout.addLayout(info_vbox); self.sample_range_label = QLabel("Gyldig antall: 1 - 96"); self.sample_range_label.setFont(QFont("Arial", 12, italic=True)); 
         samples_layout = QHBoxLayout()
         samples_label = QLabel("Antall prøver:")
         samples_label.setFont(QFont("Arial", 20))
@@ -1007,8 +1053,8 @@ class BoxGroupForm(QFrame):
         layout.addRow("Initiell startposisjon:", self.start_pos_input)
         layout.addRow("Deaktiverte brønner:", self.disabled_wells_input)
         layout.addRow("Standard volum (µL):", self.vol_default_input)
-        layout.addRow("Fil for startposisjon:", self.start_pos_file_input)
-        layout.addRow("Fil for volum:", self.volume_file_input)
+        layout.addRow("Fil for startposisjon:", make_path_picker(self, self.start_pos_file_input, mode="save", caption="Velg fil for startposisjon", file_filter="Tekstfiler (*.txt);;Alle filer (*)"))
+        layout.addRow("Fil for volum:", make_path_picker(self, self.volume_file_input, mode="save", caption="Velg fil for volum", file_filter="Tekstfiler (*.txt);;Alle filer (*)"))
     def get_data(self):
         try:
             disabled_wells = [int(x.strip()) for x in self.disabled_wells_input.text().split(',') if x.strip()]
@@ -1063,9 +1109,24 @@ class BoxGroupForm(QFrame):
 class UDFOptionForm(QWidget):
     remove_me = Signal(object)
     def __init__(self, parent=None):
-        super().__init__(parent); font = QFont("Arial", 14); layout = QHBoxLayout(self); self.label_input = QLineEdit(); self.value_input = QLineEdit(); self.file_input = QLineEdit(); remove_button = QPushButton("x"); remove_button.setFixedSize(30,30)
-        for w in [self.label_input, self.value_input, self.file_input, remove_button]: w.setFont(font)
-        layout.addWidget(QLabel("Tekst:")); layout.addWidget(self.label_input, 1); layout.addWidget(QLabel("Verdi:")); layout.addWidget(self.value_input, 1); layout.addWidget(QLabel("Filsti:")); layout.addWidget(self.file_input, 2); layout.addWidget(remove_button)
+        super().__init__(parent)
+        font = QFont("Arial", 14)
+        layout = QHBoxLayout(self)
+        self.label_input = QLineEdit()
+        self.value_input = QLineEdit()
+        self.file_input = QLineEdit()
+        remove_button = QPushButton("x")
+        remove_button.setFixedSize(30, 30)
+        for w in [self.label_input, self.value_input, self.file_input, remove_button]:
+            w.setFont(font)
+
+        layout.addWidget(QLabel("Tekst:"))
+        layout.addWidget(self.label_input, 1)
+        layout.addWidget(QLabel("Verdi:"))
+        layout.addWidget(self.value_input, 1)
+        layout.addWidget(QLabel("Filsti:"))
+        layout.addWidget(make_path_picker(self, self.file_input, mode="save", caption="Velg filsti", file_filter="Tekstfiler (*.txt);;Alle filer (*)"), 2)
+        layout.addWidget(remove_button)
         remove_button.clicked.connect(lambda: self.remove_me.emit(self))
     def get_data(self):
         return {"label": self.label_input.text(), "value": self.value_input.text(), "file": self.file_input.text()}
@@ -1152,7 +1213,7 @@ class GeneratorScreen(QWidget):
         form_layout.addRow("Type script:", self.script_type_input)
         form_layout.addRow("Verdi for robot:", self.target_value_input)
         form_layout.addRow("Beskrivelse:", self.description_input)
-        form_layout.addRow("Filnavn for thumbnail:", self.thumbnail_input)
+        form_layout.addRow("Filnavn for thumbnail:", make_path_picker(self, self.thumbnail_input, mode="open", caption="Velg thumbnail", file_filter="Bilder (*.png *.jpg *.jpeg *.bmp);;Alle filer (*)"))
         form_layout.addRow("Kilde-layout (RxC):", self.source_layout_input)
         
         # Sample configuration section
@@ -1160,10 +1221,10 @@ class GeneratorScreen(QWidget):
         
         # File paths section
         form_layout.addRow(QLabel("<u>Globale filstier:</u>"))
-        form_layout.addRow("Fil for valgt script:", self.target_file_input)
-        form_layout.addRow("Fil for antall prøver:", self.sample_count_file_input)
-        form_layout.addRow("Fil for visualisering (.png):", self.visualization_file_input)
-        form_layout.addRow("Journaldatafil:", self.journal_dir_input)
+        form_layout.addRow("Fil for valgt script:", make_path_picker(self, self.target_file_input, mode="save", caption="Velg fil for valgt script", file_filter="Tekstfiler (*.txt);;Alle filer (*)"))
+        form_layout.addRow("Fil for antall prøver:", make_path_picker(self, self.sample_count_file_input, mode="save", caption="Velg fil for antall prøver", file_filter="Tekstfiler (*.txt);;Alle filer (*)"))
+        form_layout.addRow("Fil for visualisering (.png):", make_path_picker(self, self.visualization_file_input, mode="save", caption="Velg fil for visualisering", file_filter="Bilder (*.png);;Alle filer (*)"))
+        form_layout.addRow("Journaldatafil:", make_path_picker(self, self.journal_dir_input, mode="open", caption="Velg journaldata", file_filter="Datafiler (*.txt *.csv);;Alle filer (*)"))
         
         # Initialize visibility
         self._on_script_type_changed(self.script_type_input.currentText())

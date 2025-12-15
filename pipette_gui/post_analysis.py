@@ -929,8 +929,8 @@ class PostAnalysisWindow(QMainWindow):
         reports_dir = self.settings.get("reports_dir", "test_reports/standard")
         # Only process recent .CSV files (default: last 2 minutes).
         # TESTING: comment out the next line and uncomment the one after it.
-        # max_age_minutes = 2
-        max_age_minutes = None
+        max_age_minutes = 2
+        # max_age_minutes = None
         all_results, self.global_source_usage = LogParser.scan_directory(reports_dir, max_age_minutes=max_age_minutes)
         
         if not all_results:

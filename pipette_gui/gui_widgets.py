@@ -8,7 +8,7 @@ class ThumbnailButton(QWidget):
     # ... (Denne klassen er uendret)
     clicked = Signal()
     def __init__(self, text, image_path, parent=None):
-        super().__init__(parent); self.setMaximumSize(350, 220); self.setMinimumSize(200, 180); main_layout = QVBoxLayout(self); main_layout.setContentsMargins(10, 10, 10, 10); self.image_label = QLabel(); self.image_label.setAlignment(Qt.AlignCenter); self.image_label.setScaledContents(True); pixmap = QPixmap(image_path)
+        super().__init__(parent); self.setMaximumSize(400, 300); self.setMinimumSize(200, 180); main_layout = QVBoxLayout(self); main_layout.setContentsMargins(10, 10, 10, 10); self.image_label = QLabel(); self.image_label.setAlignment(Qt.AlignCenter); self.image_label.setScaledContents(True); pixmap = QPixmap(image_path)
         if pixmap.isNull(): self.image_label.setText("Bilde\nikke funnet")
         else: self.image_label.setPixmap(pixmap)
         self.text_label = QLabel(text); self.text_label.setFont(QFont("Arial", 14, QFont.Bold)); self.text_label.setAlignment(Qt.AlignCenter); self.text_label.setWordWrap(True); main_layout.addWidget(self.image_label, 1); main_layout.addWidget(self.text_label)

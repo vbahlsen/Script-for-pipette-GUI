@@ -23,3 +23,6 @@ Thumbs.db
 # Project specific
 robot/variables/*.txt
 test_reports/
+launch_main.vbs 
+launch_post_analysis.vbs
+scripts/
