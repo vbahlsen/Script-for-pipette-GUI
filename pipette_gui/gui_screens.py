@@ -277,6 +277,7 @@ class ScriptDetailScreen(QWidget):
         Returns True if loading was successful, False otherwise.
         """
         import os
+        import re
         from pathlib import Path
         
         self.keypad.hide()
@@ -392,18 +393,47 @@ class ScriptDetailScreen(QWidget):
             if hasattr(self, 'pooled_info_label'):
                 self.pooled_info_label.hide()
         
+        def _read_start_position_from_file(path_value):
+            if not path_value:
+                return None
+
+            start_pos_path = os.path.normpath(str(path_value))
+            try:
+                # utf-8-sig handles files that may include a UTF-8 BOM (common on Windows)
+                with open(start_pos_path, 'r', encoding='utf-8-sig') as f:
+                    raw_text = f.read()
+
+                match = re.search(r"\d+", raw_text.strip())
+                if not match:
+                    print(f"WARNING: startPositionFile contains no number: {start_pos_path} (content={raw_text!r})")
+                    return None
+
+                pos_from_file = int(match.group(0))
+                if 1 <= pos_from_file <= 96:
+                    return pos_from_file
+
+                print(f"WARNING: startPositionFile out of range (1-96): {start_pos_path} (value={pos_from_file})")
+                return None
+            except FileNotFoundError:
+                print(f"WARNING: startPositionFile not found: {start_pos_path}")
+                return None
+            except PermissionError as e:
+                print(f"WARNING: startPositionFile not readable: {start_pos_path} ({e})")
+                return None
+            except OSError as e:
+                print(f"WARNING: error reading startPositionFile: {start_pos_path} ({e})")
+                return None
+
         # Create box group widgets
         for group_data in self.script_data.get("boxGroups", []):
             try:
-                # Load start position
-                with open(group_data['startPositionFile'], 'r') as f:
-                    pos_from_file = int(f.read().strip())
-                    if 1 <= pos_from_file <= 96:
-                        group_data['currentStartPosition'] = pos_from_file
-                    else:
-                        group_data['currentStartPosition'] = group_data['initialStartPosition']
-            except (FileNotFoundError, ValueError, KeyError):
-                group_data['currentStartPosition'] = group_data['initialStartPosition']
+                # Load start position (prefer previously saved file value)
+                start_pos = _read_start_position_from_file(group_data.get('startPositionFile'))
+                group_data['currentStartPosition'] = (
+                    start_pos if start_pos is not None else group_data['initialStartPosition']
+                )
+            except KeyError:
+                group_data['currentStartPosition'] = 1
 
             # Create and set up group widget
             group_widget = BoxGroupWidget(group_data)

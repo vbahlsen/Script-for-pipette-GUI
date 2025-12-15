@@ -259,6 +259,17 @@ class MainWindow(QMainWindow):
 
     def close_application(self):
         print("Lukker applikasjonen...")
+        
+        # Write "END" to status file
+        status_file = pathlib.Path("C:/Pipette GUI IKKE SLETT/Script-for-pipette-GUI/robot/selected_script.txt")  # Directory specified here
+        try:
+            status_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(status_file, 'w') as f:
+                f.write("END")
+            print(f"Status file written to: {status_file}")
+        except Exception as e:
+            print(f"Error writing status file: {e}")
+        
         QApplication.instance().quit()
 
 if __name__ == "__main__":
