@@ -198,6 +198,10 @@ class BoxGroupWidget(QFrame):
             if sample_count <= 0:
                 plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), fixed_size=False, show_title=True)
                 plate.set_state(start_pos=start_pos, sample_count=0, disabled_wells=disabled_wells, frame_color=frame_color)
+                # Make the imaged plate clickable to open the expanded start-position editor,
+                # matching the "Endre startposisjon" button behavior.
+                plate.setCursor(Qt.CursorShape.PointingHandCursor)
+                plate.plate_clicked.connect(lambda _gw=self: self.change_start_pos_clicked.emit(_gw))
                 # Don't set fixed size - let it scale with container
                 self.plates_layout.addWidget(plate)
                 self.plate_widgets.append(plate)
@@ -217,6 +221,10 @@ class BoxGroupWidget(QFrame):
 
             show_title = (i == 0)
             plate = WellPlateWidget(shape=self.group_data.get("shape", "rect"), fixed_size=False, show_title=show_title)
+            # Make the imaged plate clickable to open the expanded start-position editor,
+            # matching the "Endre startposisjon" button behavior.
+            plate.setCursor(Qt.CursorShape.PointingHandCursor)
+            plate.plate_clicked.connect(lambda _gw=self: self.change_start_pos_clicked.emit(_gw))
 
             available_wells_on_this_plate = 0
             for well in range(current_pos_on_plate, 97):

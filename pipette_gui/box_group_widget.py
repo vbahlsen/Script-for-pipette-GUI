@@ -122,6 +122,11 @@ class BoxGroupWidget(QFrame):
                     shape=self.group_data.get("shape", "rect"),
                     show_title=show_title
                 )
+
+                # Make the imaged plate clickable to open the expanded start-position editor,
+                # matching the "Endre startposisjon" button behavior.
+                plate.setCursor(Qt.CursorShape.PointingHandCursor)
+                plate.plate_clicked.connect(lambda _gw=self: self.change_start_pos_clicked.emit(_gw))
                 
                 # Calculate samples for this plate
                 available_wells = sum(1 for well in range(current_pos, 97)

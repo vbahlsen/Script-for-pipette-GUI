@@ -17,6 +17,7 @@ class ThumbnailButton(QWidget):
         self.clicked.emit(); super().mousePressEvent(event)
 
 class WellPlateWidget(QWidget):
+    plate_clicked = Signal()
     well_clicked = Signal(int)
     def __init__(self, shape='rect', fixed_size=True, show_title=True, parent=None):
         super().__init__(parent)
@@ -169,7 +170,11 @@ class WellPlateWidget(QWidget):
                 else: painter.setPen(QPen(QColor("#000000")))
                 painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, well_name)
     def mousePressEvent(self, event):
-        if not self.is_interactive: return
+        # Always allow the plate as a whole to be clickable (used for e.g. opening an expanded view).
+        self.plate_clicked.emit()
+        if not self.is_interactive:
+            super().mousePressEvent(event)
+            return
         top_margin = 50 if self.show_title else 20
         widget_width = self.width(); widget_height = self.height(); cell_width = (widget_width - 40) / self.cols; cell_height = (widget_height - top_margin - 20) / self.rows
         col = int((event.position().x() - 20) / cell_width); row = int((event.position().y() - top_margin) / cell_height)
@@ -178,6 +183,7 @@ class WellPlateWidget(QWidget):
             if well_index in self.disabled_wells:
                 print(f"Brønn {well_index} er deaktivert og kan ikke velges."); return
             self.well_clicked.emit(well_index)
+        super().mousePressEvent(event)
 
 class NumericKeypad(QWidget):
     key_pressed = Signal(str)
