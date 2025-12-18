@@ -1,7 +1,7 @@
 # Filnavn: gui_widgets.py
 
 from PySide6.QtWidgets import QWidget, QPushButton, QGridLayout, QVBoxLayout, QLabel, QSizePolicy
-from PySide6.QtCore import Signal, Qt, QRect, QSize
+from PySide6.QtCore import Signal, Qt, QRect, QSize, QTimer
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont, QPixmap
 
 class ThumbnailButton(QWidget):
@@ -32,6 +32,14 @@ class WellPlateWidget(QWidget):
         self.frame_color = "#808080"  # Default gray
         self.row_map = self._generate_row_map()
         self.show_title = show_title
+        
+        # Animation for pulsing effect
+        self.pulse_value = 0.0
+        self.pulse_direction = 1
+        self.pulse_timer = QTimer(self)
+        self.pulse_timer.timeout.connect(self._update_pulse)
+        self.pulse_timer.start(30)  # ~20 FPS
+        
         if fixed_size:
             self.setFixedSize(520, 380)
         else:
@@ -94,6 +102,15 @@ class WellPlateWidget(QWidget):
         self.is_interactive = interactive
         if not interactive: self.temp_selected_well = None
         self.update()
+    def _update_pulse(self):
+        self.pulse_value += 0.05 * self.pulse_direction
+        if self.pulse_value >= 1.0:
+            self.pulse_value = 1.0
+            self.pulse_direction = -1
+        elif self.pulse_value <= 0.0:
+            self.pulse_value = 0.0
+            self.pulse_direction = 1
+        self.update()
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -154,21 +171,34 @@ class WellPlateWidget(QWidget):
                     color_fill = QColor("#e0e0e0")  # Lighter gray for better contrast
                 elif well_index_1_based in active_sample_wells:
                     if well_index_1_based == actual_start_pos:
-                        color_fill = QColor("#00b347")  # Deeper green for start position
+                        base_color = QColor("#00b347")  # Deeper green for start position
                     else:
-                        color_fill = QColor("#80dda8")  # Softer green for active samples
+                        base_color = QColor("#80dda8")  # Softer green for active samples
+                    
+                    # Apply pulsing effect by modulating lightness
+                    # Vary between 100% and 140% lightness
+                    pulse_factor = 100 + int(self.pulse_value * 40)
+                    color_fill = base_color.lighter(pulse_factor)
                 elif well_index_1_based < self.start_pos:
                     color_fill = QColor("#ffd700")  # More saturated yellow for better visibility
                 if self.is_interactive and well_index_1_based == self.temp_selected_well:
                     color_fill = QColor("#0078d4")  # Match the app's accent color
                 rect = QRect(20 + col * cell_width, top_margin + row * cell_height, cell_width - 2, cell_height - 2)
-                painter.setPen(QPen(color_outline, 2)); painter.setBrush(QBrush(color_fill))
-                if self.shape == 'circle': painter.drawEllipse(rect)
-                else: painter.drawRect(rect)
-                well_name = f"{self.row_map[row]}{col + 1}"; painter.setFont(small_font)
-                if color_fill.lightness() < 128: painter.setPen(QPen(QColor("#FFFFFF")))
-                else: painter.setPen(QPen(QColor("#000000")))
-                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, well_name)
+                
+                # Only draw the well shape and text if it's not disabled
+                if well_index_1_based not in self.disabled_wells:
+                    painter.setPen(QPen(color_outline, 2)); painter.setBrush(QBrush(color_fill))
+                    if self.shape == 'circle': painter.drawEllipse(rect)
+                    else: painter.drawRect(rect)
+                    
+                    well_name = f"{self.row_map[row]}{col + 1}"; painter.setFont(small_font)
+                    
+                    if color_fill.lightness() < 128: 
+                        painter.setPen(QPen(QColor("#FFFFFF")))
+                    else: 
+                        painter.setPen(QPen(QColor("#000000")))
+                        
+                    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, well_name)
     def mousePressEvent(self, event):
         # Always allow the plate as a whole to be clickable (used for e.g. opening an expanded view).
         self.plate_clicked.emit()

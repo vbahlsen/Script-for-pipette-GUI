@@ -538,7 +538,38 @@ class ScriptDetailScreen(QWidget):
         # Enable touch scrolling for better touchscreen support
         QScroller.grabGesture(scroll_area.viewport(), QScroller.ScrollerGestureType.LeftMouseButtonGesture)
         
-        self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); content_layout.setContentsMargins(10, 10, 10, 10); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 18)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); self.script_name_label = QLabel("Script Navn"); self.script_name_label.setFont(QFont("Arial", 28, QFont.Bold)); self.script_name_label.setAlignment(Qt.AlignCenter); self.script_name_label.setWordWrap(True); self.thumbnail_label = QLabel(); self.thumbnail_label.setMaximumSize(480, 340); self.thumbnail_label.setScaledContents(True); self.thumbnail_label.setAlignment(Qt.AlignCenter); self.thumbnail_label.setStyleSheet("border: 1px solid #ccc;"); self.description_label = QLabel("Beskrivelse her..."); self.description_label.setFont(QFont("Arial", 14)); self.description_label.setWordWrap(True); info_vbox = QVBoxLayout(); info_vbox.addWidget(self.description_label); info_vbox.addStretch(1); info_layout.addWidget(self.thumbnail_label); info_layout.addLayout(info_vbox); self.sample_range_label = QLabel("Gyldig antall: 1 - 96"); self.sample_range_label.setFont(QFont("Arial", 12, italic=True)); 
+        self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); content_layout.setContentsMargins(10, 10, 10, 10); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 18)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); 
+        
+        self.script_name_label = QLabel("Script Navn")
+        self.script_name_label.setFont(QFont("Arial", 28, QFont.Bold))
+        self.script_name_label.setAlignment(Qt.AlignCenter)
+        self.script_name_label.setWordWrap(True)
+        self.script_name_label.setContentsMargins(10, 10, 10, 10)
+        
+        self.thumbnail_label = QLabel()
+        self.thumbnail_label.setMaximumSize(480, 340)
+        self.thumbnail_label.setScaledContents(True)
+        self.thumbnail_label.setAlignment(Qt.AlignCenter)
+        self.thumbnail_label.setStyleSheet("border: none;")
+        self.thumbnail_label.setContentsMargins(10, 10, 10, 10)
+        
+        self.description_label = QLabel("Beskrivelse her...")
+        self.description_label.setFont(QFont("Arial", 14))
+        self.description_label.setWordWrap(True)
+        self.description_label.setContentsMargins(10, 10, 10, 10)
+        
+        info_vbox = QVBoxLayout()
+        info_vbox.addWidget(self.description_label)
+        info_vbox.addStretch(1)
+        
+        info_layout = QHBoxLayout()
+        info_layout.setSpacing(15)
+        info_layout.addWidget(self.thumbnail_label)
+        info_layout.addLayout(info_vbox)
+        
+        self.sample_range_label = QLabel("Gyldig antall: 1 - 96")
+        self.sample_range_label.setFont(QFont("Arial", 12, italic=True))
+        self.sample_range_label.setContentsMargins(10, 0, 10, 0)
         samples_layout = QHBoxLayout()
         samples_label = QLabel("Antall prøver:")
         samples_label.setFont(QFont("Arial", 20))
