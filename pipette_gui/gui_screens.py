@@ -6,6 +6,7 @@ import math
 import subprocess
 import re
 import shutil
+from pathlib import Path
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QLabel, QSpacerItem, QSizePolicy, QFrame, QScrollArea, 
                                QCheckBox, QFormLayout, QLineEdit, QComboBox, QMessageBox, 
@@ -304,8 +305,8 @@ class ScriptDetailScreen(QWidget):
             script_dir = self.base_dir / "scripts" / script_data['folder_name']
             journal_path = script_data.get('journalDataFile', '').strip()
             
-            # Determine the actual file path
-            journal_file_path = None
+            # Determine the actual search directory
+            search_dir = None
             
             if journal_path:
                 # Remove trailing slashes/backslashes
@@ -313,93 +314,50 @@ class ScriptDetailScreen(QWidget):
                 
                 # Check if it's a directory or file
                 if os.path.isdir(journal_path):
-                    # It's a directory - search for files in it
                     search_dir = Path(journal_path)
-                    txt_files = list(search_dir.glob("*.txt"))
-                    csv_files = list(search_dir.glob("*.csv"))
-                    journal_files = txt_files + csv_files
-                    
-                    if len(journal_files) > 1:
-                        QMessageBox.warning(self, "Flere journalfiler", 
-                                          f"Flere lister i {search_dir}, rydd opp i disse og prøv igjen")
-                        return False
-                    elif len(journal_files) == 1:
-                        journal_file_path = str(journal_files[0])
                 elif os.path.isfile(journal_path):
-                    # It's a file - use it directly
-                    journal_file_path = journal_path
+                    search_dir = Path(journal_path).parent
                 else:
                     # Path doesn't exist - try as relative path
                     potential_path = script_dir / journal_path
-                    if potential_path.is_file():
-                        journal_file_path = str(potential_path)
-                    elif potential_path.is_dir():
-                        # It's a relative directory
-                        txt_files = list(potential_path.glob("*.txt"))
-                        csv_files = list(potential_path.glob("*.csv"))
-                        journal_files = txt_files + csv_files
-                        
-                        if len(journal_files) > 1:
-                            QMessageBox.warning(self, "Flere journalfiler", 
-                                              f"Flere lister i {potential_path}, rydd opp i disse og prøv igjen")
-                            return False
-                        elif len(journal_files) == 1:
-                            journal_file_path = str(journal_files[0])
+                    if potential_path.is_dir():
+                        search_dir = potential_path
+                    elif potential_path.is_file():
+                        search_dir = potential_path.parent
             
-            # If still no file found, search in script directory as fallback
+            # Fallback to script directory if no search_dir found yet
+            if not search_dir:
+                search_dir = script_dir
+            
+            # Now search for files in search_dir
+            txt_files = list(search_dir.glob("*.txt"))
+            csv_files = list(search_dir.glob("*.csv"))
+            journal_files = txt_files + csv_files
+            
+            journal_file_path = self._handle_multiple_journal_files(journal_files, search_dir)
+            
             if not journal_file_path:
-                txt_files = list(script_dir.glob("*.txt"))
-                csv_files = list(script_dir.glob("*.csv"))
-                journal_files = txt_files + csv_files
-                
-                if len(journal_files) > 1:
-                    QMessageBox.warning(self, "Flere journalfiler", 
-                                      f"Flere lister i {script_dir}, rydd opp i disse og prøv igjen")
-                    return False
-                elif len(journal_files) == 1:
-                    journal_file_path = str(journal_files[0])
-                else:
-                    QMessageBox.warning(self, "Mangler journalfil", 
-                                      f"Ingen journalfiler funnet")
-                    return False
+                QMessageBox.warning(self, "Mangler journalfil", 
+                                  f"Ingen journalfiler funnet i {search_dir}")
+                return False
             
             # Load the journal file
             if journal_file_path and self.journal_data.load_file(journal_file_path):
                 sample_mapping = self.journal_data.get_sample_mapping()
                 # Set up display for pooled scripts
                 self.samples_display.setEnabled(False)
-                
-                # Get sample counts
-                individual_count = len(sample_mapping["individual"])
-                pool_count = len(sample_mapping["pooled"])
-                self.samples_display.setText(str(individual_count))
-                
-                # Create sample count label if it doesn't exist
-                if not hasattr(self, 'pooled_info_label'):
-                    self.pooled_info_label = QLabel()
-                    self.pooled_info_label.setFont(QFont("Arial", 16))
-                    index = self.main_layout.indexOf(self.sample_range_label)
-                    self.main_layout.insertWidget(index + 1, self.pooled_info_label)
-                
-                # Update pooled sample information - get first and last from ordered list
-                first_case = sample_mapping["individual"][0]["case_id"] if sample_mapping["individual"] else ""
-                last_case = sample_mapping["individual"][-1]["case_id"] if sample_mapping["individual"] else ""
-                
-                self.pooled_info_label.setText(
-                    f"Antall journalsaker: {pool_count}\n"
-                    f"Første og siste journalsak: {first_case} til {last_case}")
-                self.pooled_info_label.show()
+                self._update_pooled_info(journal_file_path, sample_mapping)
             else:
                 QMessageBox.warning(self, "Kunne ikke laste journalfil", 
-                                  f"Feil ved lasting av journalfil")
+                                  f"Feil ved lasting av journalfil: {journal_file_path}")
                 return False
         else:
             # Enable sample count input for standard scripts
             self.samples_display.setEnabled(True)
             
-            # Hide pooled info label for standard scripts
-            if hasattr(self, 'pooled_info_label'):
-                self.pooled_info_label.hide()
+            # Hide pooled info banner for standard scripts
+            if hasattr(self, 'pooled_info_container'):
+                self.pooled_info_container.hide()
         
         def _read_start_position_from_file(path_value):
             if not path_value:
@@ -540,6 +498,47 @@ class ScriptDetailScreen(QWidget):
         
         self.grab_container = QWidget(); scroll_area.setWidget(self.grab_container); content_layout = QVBoxLayout(self.grab_container); content_layout.setContentsMargins(10, 10, 10, 10); top_bar_layout = QHBoxLayout(); info_layout = QHBoxLayout(); self.back_button = QPushButton("← Tilbake til menyen"); self.back_button.setMinimumHeight(80); self.back_button.setFont(QFont("Arial", 18)); top_bar_layout.addWidget(self.back_button); top_bar_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)); 
         
+        # Pooled info banner (hidden by default)
+        self.pooled_info_container = QFrame()
+        self.pooled_info_container.setStyleSheet("""
+            QFrame { 
+                background-color: #3d3d3d; 
+                border-radius: 8px; 
+                border: 2px solid #0078d4;
+                margin: 5px;
+            }
+            QLabel {
+                border: none;
+                background-color: transparent;
+            }
+        """)
+        self.pooled_info_container.hide()
+        pooled_info_layout = QHBoxLayout(self.pooled_info_container)
+        pooled_info_layout.setContentsMargins(15, 10, 15, 10)
+        
+        self.pooled_info_label = QLabel()
+        self.pooled_info_label.setFont(QFont("Arial", 16))
+        self.pooled_info_label.setStyleSheet("color: #ffffff; border: none;")
+        
+        self.change_journal_button = QPushButton("Velg ny fil")
+        self.change_journal_button.setFont(QFont("Arial", 14, QFont.Bold))
+        self.change_journal_button.setMinimumHeight(50)
+        self.change_journal_button.setFixedWidth(180)
+        self.change_journal_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d4;
+                color: white;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #005a9e;
+            }
+        """)
+        self.change_journal_button.clicked.connect(self._on_change_journal_file)
+        
+        pooled_info_layout.addWidget(self.pooled_info_label, 1)
+        pooled_info_layout.addWidget(self.change_journal_button)
+        
         self.script_name_label = QLabel("Script Navn")
         self.script_name_label.setFont(QFont("Arial", 28, QFont.Bold))
         self.script_name_label.setAlignment(Qt.AlignCenter)
@@ -586,7 +585,21 @@ class ScriptDetailScreen(QWidget):
         self.groups_layout.setSpacing(10)
         self.groups_layout.setContentsMargins(5, 5, 5, 5)
         
-        self.start_button = QPushButton("START PIPETTERING"); self.start_button.setMinimumHeight(120); self.start_button.setFont(QFont("Arial", 32, QFont.Bold)); self.start_button.setStyleSheet("""QPushButton {background-color: #0078d4; color: white;} QPushButton:disabled {background-color: #5a5a5a; color: #999999;}"""); self.keypad = NumericKeypad(self); self.keypad.setFixedSize(450, 520); self.keypad.hide(); content_layout.addLayout(top_bar_layout); content_layout.addWidget(self.script_name_label); content_layout.addLayout(info_layout); content_layout.addLayout(samples_layout); content_layout.addWidget(self.sample_range_label); content_layout.addLayout(self.udf_main_layout); content_layout.addWidget(self.groups_container); content_layout.addStretch(1); main_layout.addWidget(scroll_area, 1); main_layout.addWidget(self.start_button)
+        self.start_button = QPushButton("START PIPETTERING"); self.start_button.setMinimumHeight(120); self.start_button.setFont(QFont("Arial", 32, QFont.Bold)); self.start_button.setStyleSheet("""QPushButton {background-color: #0078d4; color: white;} QPushButton:disabled {background-color: #5a5a5a; color: #999999;}"""); self.keypad = NumericKeypad(self); self.keypad.setFixedSize(450, 520); self.keypad.hide(); 
+        
+        # Add widgets to content layout in order
+        content_layout.addLayout(top_bar_layout)
+        content_layout.addWidget(self.pooled_info_container)
+        content_layout.addWidget(self.script_name_label)
+        content_layout.addLayout(info_layout)
+        content_layout.addLayout(samples_layout)
+        content_layout.addWidget(self.sample_range_label)
+        content_layout.addLayout(self.udf_main_layout)
+        content_layout.addWidget(self.groups_container)
+        content_layout.addStretch(1)
+        
+        main_layout.addWidget(scroll_area, 1)
+        main_layout.addWidget(self.start_button)
     def _connect_signals(self):
         self.back_button.clicked.connect(self.back_to_menu.emit); self.keypad.enter_pressed.connect(self._confirm_input); self.keypad.key_pressed.connect(self._on_key_pressed); self.samples_display.clicked.connect(lambda: self._set_active_input(self.samples_display)); self.start_button.clicked.connect(self._on_start_pipetting)
     def _confirm_input(self):
@@ -629,6 +642,70 @@ class ScriptDetailScreen(QWidget):
     def finalize_new_start_pos(self, well_index):
         if self.active_group_for_editing:
             group = self.active_group_for_editing; group.group_data['currentStartPosition'] = well_index; group.update_displays(); self._update_all_plates(); self.active_group_for_editing = None
+
+    def _on_change_journal_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Velg journalfil", "", "Journalfiler (*.txt *.csv);;Alle filer (*.*)"
+        )
+        if file_path:
+            if self.journal_data.load_file(file_path):
+                sample_mapping = self.journal_data.get_sample_mapping()
+                self._update_pooled_info(file_path, sample_mapping)
+                self._update_all_plates()
+            else:
+                QMessageBox.warning(self, "Feil", "Kunne ikke laste journalfilen.")
+
+    def _update_pooled_info(self, file_path, sample_mapping):
+        filename = os.path.basename(file_path)
+        pool_count = len(sample_mapping["pooled"])
+        individual_count = len(sample_mapping["individual"])
+        self.samples_display.setText(str(individual_count))
+        
+        first_case = sample_mapping["individual"][0]["case_id"] if sample_mapping["individual"] else ""
+        last_case = sample_mapping["individual"][-1]["case_id"] if sample_mapping["individual"] else ""
+        
+        self.pooled_info_label.setText(
+            f"Fil med journalsaker: {filename}\n"
+            f"Antall journalsaker: {pool_count}\n"
+            f"Første og siste journalsak: {first_case} til {last_case}"
+        )
+        self.pooled_info_container.show()
+
+    def _handle_multiple_journal_files(self, journal_files, search_dir):
+        from pathlib import Path
+        import shutil
+        
+        if not journal_files:
+            return None
+            
+        if len(journal_files) == 1:
+            return str(journal_files[0])
+        
+        QMessageBox.warning(self, "Flere journalfiler", 
+                          "Mer enn en fil med journalsak-data ligger i mappen. "
+                          "Gjør en vurdering på om noe utilsiktet har inntruffet, "
+                          "og/eller velg korrekt fil (resten av .csv-filer i mål-mappen flyttes til \"complete\")")
+        
+        selected_file, _ = QFileDialog.getOpenFileName(
+            self, "Velg korrekt journalfil", str(search_dir), "Journalfiler (*.txt *.csv);;Alle filer (*.*)"
+        )
+        
+        if selected_file:
+            selected_path = Path(selected_file)
+            complete_dir = search_dir / "Complete"
+            complete_dir.mkdir(exist_ok=True)
+            
+            for f in journal_files:
+                # Only move if it's not the selected file
+                if str(f.absolute()) != str(selected_path.absolute()):
+                    try:
+                        # Move other files to Complete
+                        shutil.move(str(f), str(complete_dir / f.name))
+                    except Exception as e:
+                        print(f"Kunne ikke flytte fil {f}: {e}")
+            
+            return selected_file
+        return None
             
     def _check_udf_selections(self):
         """Check if all user-defined variables have selections"""
