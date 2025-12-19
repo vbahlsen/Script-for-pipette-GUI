@@ -4,6 +4,7 @@ import os
 import json
 import math
 import subprocess
+import sys
 import re
 import shutil
 from pathlib import Path
@@ -302,56 +303,9 @@ class ScriptDetailScreen(QWidget):
         # Load journal data for pooled scripts
         sample_mapping = None
         if script_data.get("scriptType") == "pooled":
-            script_dir = self.base_dir / "scripts" / script_data['folder_name']
-            journal_path = script_data.get('journalDataFile', '').strip()
-            
-            # Determine the actual search directory
-            search_dir = None
-            
-            if journal_path:
-                # Remove trailing slashes/backslashes
-                journal_path = journal_path.rstrip('/\\')
-                
-                # Check if it's a directory or file
-                if os.path.isdir(journal_path):
-                    search_dir = Path(journal_path)
-                elif os.path.isfile(journal_path):
-                    search_dir = Path(journal_path).parent
-                else:
-                    # Path doesn't exist - try as relative path
-                    potential_path = script_dir / journal_path
-                    if potential_path.is_dir():
-                        search_dir = potential_path
-                    elif potential_path.is_file():
-                        search_dir = potential_path.parent
-            
-            # Fallback to script directory if no search_dir found yet
-            if not search_dir:
-                search_dir = script_dir
-            
-            # Now search for files in search_dir
-            txt_files = list(search_dir.glob("*.txt"))
-            csv_files = list(search_dir.glob("*.csv"))
-            journal_files = txt_files + csv_files
-            
-            journal_file_path = self._handle_multiple_journal_files(journal_files, search_dir)
-            
-            if not journal_file_path:
-                QMessageBox.warning(self, "Mangler journalfil", 
-                                  f"Ingen journalfiler funnet i {search_dir}")
-                return False
-            
-            # Load the journal file
-            if journal_file_path and self.journal_data.load_file(journal_file_path):
-                sample_mapping = self.journal_data.get_sample_mapping()
-                # Set up display for pooled scripts
-                self.samples_display.setEnabled(False)
-                self._update_pooled_info(journal_file_path, sample_mapping)
-            else:
-                QMessageBox.warning(self, "Kunne ikke laste journalfil", 
-                                  f"Feil ved lasting av journalfil: {journal_file_path}")
-                return False
+            self._refresh_journal_status(show_warnings=True)
         else:
+            self.journal_file_count = 0
             # Enable sample count input for standard scripts
             self.samples_display.setEnabled(True)
             
@@ -426,7 +380,8 @@ class ScriptDetailScreen(QWidget):
             self.box_group_widgets.append(group_widget)
 
         # Reset UI state
-        if not sample_mapping:
+        # Pooled scripts get their sample count from journal data (via _update_pooled_info).
+        if not sample_mapping and script_data.get("scriptType") != "pooled":
             self.samples_input = ""
             self.samples_display.setText("0")
             
@@ -520,6 +475,22 @@ class ScriptDetailScreen(QWidget):
         self.pooled_info_label.setFont(QFont("Arial", 16))
         self.pooled_info_label.setStyleSheet("color: #ffffff; border: none;")
         
+        self.generate_journal_button = QPushButton("Generer fil")
+        self.generate_journal_button.setFont(QFont("Arial", 14, QFont.Bold))
+        self.generate_journal_button.setMinimumHeight(50)
+        self.generate_journal_button.setFixedWidth(180)
+        self.generate_journal_button.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        self.generate_journal_button.clicked.connect(self._on_generate_journal)
+
         self.change_journal_button = QPushButton("Velg ny fil")
         self.change_journal_button.setFont(QFont("Arial", 14, QFont.Bold))
         self.change_journal_button.setMinimumHeight(50)
@@ -537,6 +508,7 @@ class ScriptDetailScreen(QWidget):
         self.change_journal_button.clicked.connect(self._on_change_journal_file)
         
         pooled_info_layout.addWidget(self.pooled_info_label, 1)
+        pooled_info_layout.addWidget(self.generate_journal_button)
         pooled_info_layout.addWidget(self.change_journal_button)
         
         self.script_name_label = QLabel("Script Navn")
@@ -649,17 +621,69 @@ class ScriptDetailScreen(QWidget):
         )
         if file_path:
             if self.journal_data.load_file(file_path):
+                self.journal_file_count = 1
                 sample_mapping = self.journal_data.get_sample_mapping()
                 self._update_pooled_info(file_path, sample_mapping)
                 self._update_all_plates()
             else:
                 QMessageBox.warning(self, "Feil", "Kunne ikke laste journalfilen.")
+        
+        # Refresh status to ensure button state is correct even if cancelled
+        self._refresh_journal_status(show_warnings=False)
+
+    def _on_generate_journal(self):
+        """Launch the journal generator script and import the result."""
+        script_path = self.base_dir.parent / "pooled_gen.py"
+        
+        if not script_path.exists():
+            QMessageBox.critical(self, "Feil", f"Fant ikke generator-scriptet: {script_path}")
+            return
+            
+        try:
+            # Run the script and wait for it to finish
+            # Use sys.executable to ensure we use the same python interpreter
+            subprocess.run([sys.executable, str(script_path)], check=True)
+            
+            # After it finishes, look for the newest file in C:\Tecan\Filer\PJS_eksport
+            export_dir = Path(r"C:\Tecan\Filer\PJS_eksport")
+            if export_dir.exists():
+                files = list(export_dir.glob("*.csv")) + list(export_dir.glob("*.txt"))
+                if files:
+                    # Get the newest file by modification time
+                    newest_file = max(files, key=lambda p: p.stat().st_mtime)
+                    
+                    # Load it
+                    if self.journal_data.load_file(str(newest_file)):
+                        self.journal_file_count = 1
+                        sample_mapping = self.journal_data.get_sample_mapping()
+                        self._update_pooled_info(str(newest_file), sample_mapping)
+                        self._update_all_plates()
+                        # QMessageBox.information(self, "Suksess", f"Journalfil generert og lastet: {newest_file.name}")
+                    else:
+                        QMessageBox.warning(self, "Feil", f"Kunne ikke laste den genererte filen: {newest_file.name}")
+                else:
+                    QMessageBox.warning(self, "Feil", "Ingen filer funnet i eksport-mappen etter generering.")
+            else:
+                QMessageBox.warning(self, "Feil", f"Eksport-mappen finnes ikke: {export_dir}")
+                
+        except subprocess.CalledProcessError as e:
+            # This might happen if the user closes the generator without generating
+            print(f"Generator script exited with error or was closed: {e}")
+        except Exception as e:
+            QMessageBox.warning(self, "Feil", f"En uventet feil oppstod: {e}")
+        finally:
+            # Always refresh status after generator closes to update button state
+            self._refresh_journal_status(show_warnings=False)
 
     def _update_pooled_info(self, file_path, sample_mapping):
         filename = os.path.basename(file_path)
         pool_count = len(sample_mapping["pooled"])
         individual_count = len(sample_mapping["individual"])
         self.samples_display.setText(str(individual_count))
+
+        # Keep internal value in sync (used when exporting sampleCountFile)
+        self.temp_sample_input = str(individual_count)
+        self.samples_input = self.temp_sample_input
         
         first_case = sample_mapping["individual"][0]["case_id"] if sample_mapping["individual"] else ""
         last_case = sample_mapping["individual"][-1]["case_id"] if sample_mapping["individual"] else ""
@@ -671,7 +695,76 @@ class ScriptDetailScreen(QWidget):
         )
         self.pooled_info_container.show()
 
-    def _handle_multiple_journal_files(self, journal_files, search_dir):
+    def _refresh_journal_status(self, show_warnings=True):
+        """Re-scan the journal directory and update the UI state."""
+        if not hasattr(self, 'script_data') or self.script_data.get("scriptType") != "pooled":
+            return
+            
+        script_dir = self.base_dir / "scripts" / self.script_data['folder_name']
+        journal_path = self.script_data.get('journalDataFile', '').strip()
+        
+        # Determine the actual search directory
+        search_dir = None
+        if journal_path:
+            journal_path = journal_path.rstrip('/\\')
+            p = Path(journal_path)
+            if p.is_absolute():
+                search_dir = p if p.is_dir() else p.parent
+            else:
+                potential_path = script_dir / journal_path
+                if potential_path.is_dir(): search_dir = potential_path
+                elif potential_path.is_file(): search_dir = potential_path.parent
+                elif potential_path.parent.exists(): search_dir = potential_path.parent
+        
+        if not search_dir or not search_dir.exists():
+            search_dir = script_dir
+            
+        # Search for files
+        journal_files = []
+        for pattern in ["*.txt", "*.csv", "*.TXT", "*.CSV"]:
+            journal_files.extend(list(search_dir.glob(pattern)))
+        journal_files = list(set(journal_files))
+        self.journal_file_count = len(journal_files)
+        
+        # Handle multiple files
+        journal_file_path = self._handle_multiple_journal_files(journal_files, search_dir, show_warnings=show_warnings)
+        
+        if not journal_file_path:
+            if self.journal_file_count == 0 and show_warnings:
+                QMessageBox.warning(self, "Mangler journalfil", f"Ingen journalfiler funnet i {search_dir}")
+            
+            self.samples_display.setEnabled(False)
+            self.pooled_info_container.show()
+            if self.journal_file_count > 1:
+                self.pooled_info_label.setText("Flere journalfiler funnet - velg én")
+            else:
+                self.pooled_info_label.setText("Ingen journalfil valgt")
+            self.pooled_info_label.setStyleSheet("color: #ff4444; border: none;")
+            # Clear data if no file
+            self.journal_data.cases.clear()
+
+            # Also clear displayed/derived sample count
+            self.temp_sample_input = "0"
+            self.samples_input = ""
+            self.samples_display.setText("0")
+        else:
+            # Load the file
+            if self.journal_data.load_file(journal_file_path):
+                self.journal_file_count = 1
+                sample_mapping = self.journal_data.get_sample_mapping()
+                self.samples_display.setEnabled(False)
+                self._update_pooled_info(journal_file_path, sample_mapping)
+            else:
+                if show_warnings:
+                    QMessageBox.warning(self, "Kunne ikke laste journalfil", f"Feil ved lasting av journalfil: {journal_file_path}")
+                self.samples_display.setEnabled(False)
+                self.pooled_info_container.show()
+                self.pooled_info_label.setText("Feil ved lasting av journalfil")
+                self.pooled_info_label.setStyleSheet("color: #ff4444; border: none;")
+        
+        self._update_all_plates()
+
+    def _handle_multiple_journal_files(self, journal_files, search_dir, show_warnings=True):
         from pathlib import Path
         import shutil
         
@@ -681,10 +774,10 @@ class ScriptDetailScreen(QWidget):
         if len(journal_files) == 1:
             return str(journal_files[0])
         
-        QMessageBox.warning(self, "Flere journalfiler", 
-                          "Mer enn en fil med journalsak-data ligger i mappen. "
-                          "Gjør en vurdering på om noe utilsiktet har inntruffet, "
-                          "og/eller velg korrekt fil (resten av .csv-filer i mål-mappen flyttes til \"complete\")")
+        if show_warnings:
+            QMessageBox.warning(self, "Flere journalfiler", 
+                              "Mer enn en fil med journalsak-data ligger i mappen. "
+                              "Vennligst velg korrekt fil. De andre filene vil bli flyttet til 'Complete'-mappen.")
         
         selected_file, _ = QFileDialog.getOpenFileName(
             self, "Velg korrekt journalfil", str(search_dir), "Journalfiler (*.txt *.csv);;Alle filer (*.*)"
@@ -705,6 +798,7 @@ class ScriptDetailScreen(QWidget):
                         print(f"Kunne ikke flytte fil {f}: {e}")
             
             return selected_file
+            
         return None
             
     def _check_udf_selections(self):
@@ -729,11 +823,41 @@ class ScriptDetailScreen(QWidget):
             sample_mapping = self.journal_data.get_sample_mapping()
             
         # Check if we have valid sample count
-        has_samples = num_samples > 0 or (is_pooled and sample_mapping is not None)
+        # For pooled scripts, we must have at least one case in the journal
+        has_samples = False
+        if is_pooled:
+            if sample_mapping and (sample_mapping.get('individual') or sample_mapping.get('pooled')):
+                has_samples = True
+        else:
+            has_samples = num_samples > 0
         
         # Check if all UDFs have selections
         all_udfs_selected = self._check_udf_selections()
         
+        # Default style
+        self.start_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d4; 
+                color: white;
+            } 
+            QPushButton:disabled {
+                background-color: #5a5a5a; 
+                color: #999999;
+            }
+        """)
+        self.start_button.setText("START PIPETTERING")
+
+        if is_pooled:
+            journal_count = getattr(self, 'journal_file_count', 0)
+            if journal_count > 1:
+                self.start_button.setEnabled(False)
+                self.start_button.setText("Mer enn en journalfil i mappen")
+                self.start_button.setStyleSheet("background-color: #c00000; color: white; font-weight: bold;")
+                return
+            elif not has_samples:
+                self.start_button.setEnabled(False)
+                return
+
         # Enable button only if we have samples AND all UDFs are selected
         self.start_button.setEnabled(has_samples and all_udfs_selected)
             
@@ -857,9 +981,6 @@ class ScriptDetailScreen(QWidget):
             sample_mapping = None
             if is_pooled:
                 sample_mapping = self.journal_data.get_sample_mapping()
-                if not sample_mapping:
-                    print("No sample mapping available")
-                    return
             
             # Validate sample range for standard scripts
             if not is_pooled:
@@ -882,6 +1003,7 @@ class ScriptDetailScreen(QWidget):
                     group.update_plates(len(group_samples), start_pos, disabled, group_samples)
                 else:
                     # Standard script just uses the sample count
+                    # For pooled scripts with no mapping, this will effectively clear the plates (num_samples is 0)
                     group.update_plates(num_samples, start_pos, disabled)
             
             # Update start button state based on samples and UDFs
