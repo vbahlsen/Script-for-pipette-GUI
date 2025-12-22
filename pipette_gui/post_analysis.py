@@ -22,9 +22,11 @@ from gui_widgets import WellPlateWidget
 # ERROR CODE MAPPING
 # Add error code descriptions here. Format: error_code_number: "Description text"
 # To add a new error code, copy a line below and modify the number and description.
+# (THE FOLLOWING ERROR CODES ARE SPECIFIC TO TECAN EVOWARE 2)
 ERROR_CODE_DESCRIPTIONS = {
-    4194305: "Clot detected",
-    2: "Insufficient liquid detected",
+    4194305: "Liquid detection error - pipetted air instead of liquid",
+    524292: "Clot error - continied with clot",
+    1048580: "Clot error - ignored clot error",
     # Add more error codes here following the same format:
     # 3: "Your error description",
 }
